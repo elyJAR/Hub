@@ -1,0 +1,181 @@
+idea.txt
+
+Project overview
+Build a local network communication platform accessed through a browser. Users connect to a central server over LAN or WiFi. No internet required. The system supports messaging, calls, and file transfer with explicit user consent.
+
+Core goal
+Enable fast, secure communication inside closed networks such as campuses, offices, events, and restricted environments.
+
+System architecture
+
+Server
+Runs on a local machine or dedicated device.
+Accessible via local IP address.
+Manages sessions, discovery, signaling, and routing.
+Handles authentication and permissions.
+
+Recommended stack
+Node.js for backend
+WebSocket for live messaging
+WebRTC for voice, video, and direct data transfer
+
+Client
+Browser-based interface.
+No installation required.
+Responsive UI for desktop and mobile browsers.
+
+Network requirements
+All devices must be on the same LAN or WiFi.
+Server IP must be reachable by clients.
+
+Key features
+
+User discovery
+Users load the app in a browser.
+Server assigns a temporary session ID.
+Users appear in a live list.
+Each user has a display name and optional avatar.
+
+Connection and trust
+User selects another user.
+Sends connection request.
+Receiver accepts or rejects.
+On acceptance, both users become contacts.
+
+Messaging
+Real-time text chat via WebSocket.
+Typing indicators.
+Delivery status.
+
+Voice messaging
+Record and send audio clips.
+Receiver accepts before download or playback.
+
+Voice and video calls
+Use WebRTC after signaling through server.
+Peer-to-peer media stream.
+Fallback to server relay if direct connection fails.
+
+File transfer
+User selects file.
+Receiver gets prompt with file details.
+Transfer begins after acceptance.
+Support progress tracking and cancel option.
+Use WebRTC data channels for large files.
+Use server relay for small files.
+
+Groups
+User creates group.
+Invites sent to selected users.
+Each user must accept.
+Server maintains membership.
+Group messaging supported.
+
+Session handling
+Users exist only while connected.
+Session ends on disconnect.
+Optional server-side message storage for short duration.
+
+Security model
+
+Transport security
+Use HTTPS within local network if possible.
+
+Authentication
+Session-based identity at start.
+Upgrade path to persistent identity using key pairs.
+
+Encryption
+WebSocket secured via TLS.
+WebRTC uses built-in encryption.
+
+Permissions
+All communication requires user acceptance.
+File transfer requires explicit approval.
+
+Threat considerations
+Prevent impersonation with unique session tokens.
+Limit spam requests with rate control.
+
+User interface
+
+Main views
+Contacts list
+Nearby users
+Active chats
+Group chats
+
+Status indicators
+Online
+Offline
+In call
+Typing
+
+Interaction flow
+Click user
+Send request
+Wait for approval
+Start communication
+
+Performance considerations
+
+Low latency required for chat and calls
+Efficient handling of multiple connections
+Limit server load by offloading media to peer connections
+
+Constraints
+
+Requires shared network
+No global connectivity
+Browser limits background operations
+Device compatibility varies across browsers
+
+MVP scope
+
+Include
+User discovery
+Connection requests
+Text messaging
+Basic file transfer
+
+Exclude
+Video calls
+Complex group features
+Persistent accounts
+
+Testing plan
+
+Test in small network first
+5 to 10 devices
+Measure latency and stability
+
+Scale to larger network
+50 plus users
+Monitor server load
+
+Test across browsers
+Chrome
+Safari
+Edge
+
+Future improvements
+
+Persistent user identity
+Message history
+End-to-end encryption with key verification
+Push notifications within LAN
+Admin dashboard for network control
+
+Use cases
+
+University campus communication
+Office internal messaging
+Events and conferences
+Emergency communication without internet
+
+Success criteria
+
+Connection setup under 2 seconds
+Message delivery under 200 ms on LAN
+File transfer stable with resume support
+System stable with at least 50 concurrent users

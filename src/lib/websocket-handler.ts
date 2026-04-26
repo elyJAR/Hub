@@ -1,0 +1,356 @@
+import { WebSocket } from 'ws'
+import { nanoid } from 'nanoid'
+import { SessionManager, SessionData } from './session-manager'
+import { WebSocketMessageSchema, WebSocketMessage } from '@/types/messages'
+import { RateLimiter } from './rate-limiter'
+
+export class WebSocketMessageHandler {
+  private sessionManager: SessionManager
+  private rateLimiter: RateLimiter
+  private socketToSession = new Map<WebSocket, string>()
+
+  constructor(sessionManager: SessionManager) {
+    this.sessionManager = sessionManager
+    this.rateLimiter = new RateLimiter()
+  }
+
+  handleConnection(ws: WebSocket): void {
+    // Connection established, but no session created yet
+    // Session will be created when user sends join message
+    console.log('WebSocket connection established, waiting for join message')
+  }
+
+  handleMessage(ws: WebSocket, data: Buffer): void {
+    try {
+      const rawMessage = JSON.parse(data.toString())
+      
+      // Validate message format
+      const validationResult = WebSocketMessageSchema.safeParse(rawMessage)
+      if (!validationResult.success) {
+        this.sendError(ws, 'INVALID_MESSAGE', 'Message validation failed', validationResult.error)
+        return
+      }
+
+      const message = validationResult.data
+      
+      // Get session for this socket
+      const sessionId = this.socketToSession.get(ws)
+      
+      // Handle join message (special case - no session required)
+      if (message.type === 'join') {
+        this.handleJoinMessage(ws, message as any)
+        return
+      }
+
+      // For all other messages, require valid session
+      if (!sessionId) {
+        this.sendError(ws, 'NO_SESSION', 'No active session. Send join message first.')
+        return
+      }
+
+      const session = this.sessionManager.getSession(sessionId)
+      if (!session) {
+        this.sendError(ws, 'SESSION_NOT_FOUND', 'Session not found')
+        return
+      }
+
+      // Check rate limits
+      if (!this.rateLimiter.checkLimit(sessionId, message.type)) {
+        this.sendError(ws, 'RATE_LIMIT_EXCEEDED', 'Rate limit exceeded')
+        return
+      }
+
+      // Update last activity
+      this.sessionManager.updateLastActivity(sessionId)
+
+      // Route message based on type
+      this.routeMessage(session, message)
+
+    } catch (error) {
+      console.error('Error handling WebSocket message:', error)
+      this.sendError(ws, 'INTERNAL_ERROR', 'Internal server error')
+    }
+  }
+
+  handleDisconnection(ws: WebSocket): void {
+    const sessionId = this.socketToSession.get(ws)
+    if (sessionId) {
+      console.log(`Session ${sessionId} disconnected`)
+      this.sessionManager.removeSession(sessionId)
+      this.socketToSession.delete(ws)
+      this.broadcastPresenceUpdate()
+    }
+  }
+
+  private handleJoinMessage(ws: WebSocket, message: any): void {
+    try {
+      // Validate join message
+      if (!message.displayName || typeof message.displayName !== 'string') {
+        this.sendError(ws, 'INVALID_DISPLAY_NAME', 'Display name is required')
+        return
+      }
+
+      if (message.displayName.length < 3 || message.displayName.length > 50) {
+        this.sendError(ws, 'INVALID_DISPLAY_NAME', 'Display name must be 3-50 characters')
+        return
+      }
+
+      // Check if display name is already taken
+      const existingSessions = this.sessionManager.getAllSessions()
+      const nameTaken = existingSessions.some(s => s.displayName === message.displayName)
+      
+      if (nameTaken) {
+        // Suggest alternative name
+        const suffix = nanoid(4).toLowerCase()
+        const suggestedName = `${message.displayName} #${suffix}`
+        this.sendError(ws, 'NAME_TAKEN', 'Display name already taken', { suggestedName })
+        return
+      }
+
+      // Create session
+      const session = this.sessionManager.createSession(ws, message.displayName, message.avatar)
+      this.socketToSession.set(ws, session.sessionId)
+
+      // Generate JWT token
+      const token = this.sessionManager.generateToken(session.sessionId)
+
+      // Send session created confirmation
+      this.sendMessage(ws, {
+        type: 'session-created',
+        sessionId: session.sessionId,
+        token,
+        displayName: session.displayName,
+        avatar: session.avatar,
+      })
+
+      console.log(`User "${session.displayName}" joined with session ${session.sessionId}`)
+
+      // Broadcast presence update to all users
+      this.broadcastPresenceUpdate()
+
+    } catch (error) {
+      console.error('Error handling join message:', error)
+      this.sendError(ws, 'JOIN_FAILED', 'Failed to join session')
+    }
+  }
+
+  private routeMessage(session: SessionData, message: WebSocketMessage): void {
+    switch (message.type) {
+      case 'connection-request':
+        this.handleConnectionRequest(session, message)
+        break
+      
+      case 'connection-response':
+        this.handleConnectionResponse(session, message)
+        break
+      
+      case 'chat-message':
+        this.handleChatMessage(session, message)
+        break
+      
+      case 'typing-indicator':
+        this.handleTypingIndicator(session, message)
+        break
+      
+      case 'file-transfer-request':
+        this.handleFileTransferRequest(session, message)
+        break
+      
+      case 'file-transfer-response':
+        this.handleFileTransferResponse(session, message)
+        break
+      
+      case 'webrtc-offer':
+      case 'webrtc-answer':
+      case 'webrtc-ice-candidate':
+        this.handleWebRTCSignaling(session, message)
+        break
+      
+      default:
+        this.sendError(session.socket, 'UNKNOWN_MESSAGE_TYPE', 'Unknown message type')
+    }
+  }
+
+  private handleConnectionRequest(session: SessionData, message: any): void {
+    const targetSession = this.sessionManager.getSession(message.targetSessionId)
+    if (!targetSession) {
+      this.sendError(session.socket, 'SESSION_NOT_FOUND', 'Target user not found')
+      return
+    }
+
+    // Check if already connected
+    if (this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) {
+      this.sendError(session.socket, 'ALREADY_CONNECTED', 'Already connected to this user')
+      return
+    }
+
+    // Send request to target user
+    this.sendMessage(targetSession.socket, {
+      type: 'incoming-connection-request',
+      requestId: message.id,
+      fromSessionId: session.sessionId,
+      fromDisplayName: session.displayName,
+      fromAvatar: session.avatar,
+      expiresAt: Date.now() + 30000, // 30 seconds
+    })
+
+    // Confirm request sent
+    this.sendMessage(session.socket, {
+      type: 'request-sent',
+      requestId: message.id,
+      targetSessionId: message.targetSessionId,
+    })
+  }
+
+  private handleConnectionResponse(session: SessionData, message: any): void {
+    // Find the original request (in a real implementation, you'd store pending requests)
+    const requesterSession = this.sessionManager.getSession(message.requestId.split('-')[0]) // Simplified
+    if (!requesterSession) {
+      return
+    }
+
+    if (message.accepted) {
+      // Establish connection
+      this.sessionManager.addConnection(session.sessionId, requesterSession.sessionId)
+      
+      // Notify both users
+      this.sendMessage(session.socket, {
+        type: 'connection-established',
+        sessionId: requesterSession.sessionId,
+        displayName: requesterSession.displayName,
+        avatar: requesterSession.avatar,
+      })
+      
+      this.sendMessage(requesterSession.socket, {
+        type: 'connection-established',
+        sessionId: session.sessionId,
+        displayName: session.displayName,
+        avatar: session.avatar,
+      })
+    } else {
+      // Notify requester of rejection
+      this.sendMessage(requesterSession.socket, {
+        type: 'connection-rejected',
+        sessionId: session.sessionId,
+        displayName: session.displayName,
+      })
+    }
+  }
+
+  private handleChatMessage(session: SessionData, message: any): void {
+    const targetSession = this.sessionManager.getSession(message.targetSessionId)
+    if (!targetSession) {
+      this.sendError(session.socket, 'SESSION_NOT_FOUND', 'Target user not found')
+      return
+    }
+
+    // Check if users are connected
+    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) {
+      this.sendError(session.socket, 'NOT_CONNECTED', 'Not connected to this user')
+      return
+    }
+
+    // Forward message to target
+    this.sendMessage(targetSession.socket, {
+      type: 'chat-message-received',
+      messageId: message.id,
+      fromSessionId: session.sessionId,
+      fromDisplayName: session.displayName,
+      content: message.content,
+      timestamp: message.timestamp,
+    })
+
+    // Send delivery confirmation
+    this.sendMessage(session.socket, {
+      type: 'message-delivered',
+      messageId: message.id,
+      deliveredAt: Date.now(),
+    })
+  }
+
+  private handleTypingIndicator(session: SessionData, message: any): void {
+    const targetSession = this.sessionManager.getSession(message.targetSessionId)
+    if (!targetSession) return
+
+    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) return
+
+    this.sendMessage(targetSession.socket, {
+      type: 'typing-indicator-received',
+      fromSessionId: session.sessionId,
+      fromDisplayName: session.displayName,
+      isTyping: message.isTyping,
+    })
+  }
+
+  private handleFileTransferRequest(session: SessionData, message: any): void {
+    const targetSession = this.sessionManager.getSession(message.targetSessionId)
+    if (!targetSession) {
+      this.sendError(session.socket, 'SESSION_NOT_FOUND', 'Target user not found')
+      return
+    }
+
+    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) {
+      this.sendError(session.socket, 'NOT_CONNECTED', 'Not connected to this user')
+      return
+    }
+
+    // Send file transfer request to target
+    this.sendMessage(targetSession.socket, {
+      type: 'incoming-file-transfer-request',
+      requestId: message.id,
+      fromSessionId: session.sessionId,
+      fromDisplayName: session.displayName,
+      fileName: message.fileName,
+      fileSize: message.fileSize,
+      fileType: message.fileType,
+      expiresAt: Date.now() + 30000,
+    })
+  }
+
+  private handleFileTransferResponse(session: SessionData, message: any): void {
+    // Implementation would handle file transfer acceptance/rejection
+    // For now, just relay the response
+    console.log('File transfer response:', message)
+  }
+
+  private handleWebRTCSignaling(session: SessionData, message: any): void {
+    const targetSession = this.sessionManager.getSession(message.targetSessionId)
+    if (!targetSession) return
+
+    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) return
+
+    // Relay WebRTC signaling message
+    this.sendMessage(targetSession.socket, message)
+  }
+
+  private broadcastPresenceUpdate(): void {
+    const users = this.sessionManager.getAllSessions()
+    const presenceMessage = {
+      type: 'presence-update',
+      users,
+    }
+
+    // Send to all connected sessions
+    for (const [ws, sessionId] of this.socketToSession) {
+      if (ws.readyState === WebSocket.OPEN) {
+        this.sendMessage(ws, presenceMessage)
+      }
+    }
+  }
+
+  private sendMessage(ws: WebSocket, message: any): void {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(message))
+    }
+  }
+
+  private sendError(ws: WebSocket, code: string, message: string, details?: any): void {
+    this.sendMessage(ws, {
+      type: 'error',
+      code,
+      message,
+      details,
+      timestamp: Date.now(),
+    })
+  }
+}

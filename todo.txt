@@ -1,0 +1,213 @@
+Hub - Development TODO
+
+## Phase 1: Core Infrastructure (MVP Foundation)
+[x] Set up custom Next.js server with WebSocket support
+    - [x] Create server.ts with Express + Next.js integration
+    - [x] Add WebSocket server using 'ws' library
+    - [x] Configure CORS and security headers
+    - [x] Add graceful shutdown handling
+[x] Create WebSocket message handler with type validation
+    - [x] Implement message routing based on type
+    - [x] Add Zod validation for all incoming messages
+    - [x] Create error handling for malformed messages
+    - [x] Add message rate limiting per session
+[x] Implement session management and JWT authentication
+    - [x] Complete SessionManager class with all methods
+    - [x] Add JWT token generation and validation
+    - [x] Implement session cleanup for disconnected users
+    - [ ] Add session persistence during reconnection
+[ ] Build user join flow with display name selection
+    - [ ] Create splash screen component for name entry
+    - [ ] Add avatar selection (color/emoji picker)
+    - [ ] Implement name uniqueness validation
+    - [ ] Add join animation and loading states
+[ ] Create live user presence system
+    - [ ] Build real-time user list component
+    - [ ] Add presence broadcasting on join/leave
+    - [ ] Implement status indicators (online/away/in-call)
+    - [ ] Add user count display
+[ ] Add connection request/accept mechanism
+    - [ ] Create connection request modal/toast
+    - [ ] Add accept/reject buttons with animations
+    - [ ] Implement request timeout (30s auto-reject)
+    - [ ] Add connection status indicators
+[ ] Implement basic text messaging between connected users
+    - [ ] Build chat interface with message bubbles
+    - [ ] Add message delivery status (sent/delivered)
+    - [ ] Implement message timestamps
+    - [ ] Add emoji support and basic formatting
+[ ] Add typing indicators
+    - [ ] Create typing indicator component
+    - [ ] Add debounced typing detection
+    - [ ] Show "User is typing..." in chat
+    - [ ] Handle multiple users typing simultaneously
+[ ] Create responsive UI layout (desktop + mobile)
+    - [x] Build main layout structure and globals.css
+    - [ ] Add mobile-responsive navigation
+    - [ ] Implement touch gestures for mobile
+    - [ ] Add dark/light theme support
+
+## Missing Components to Build (Phase 1 Completion)
+[ ] React Components
+    - [ ] JoinScreen component with form validation
+    - [ ] MainInterface component (main app layout)
+    - [ ] UserList component (sidebar with online users)
+    - [ ] ChatInterface component (message area)
+    - [ ] MessageBubble component (individual messages)
+    - [ ] ConnectionRequest component (modal/toast)
+    - [ ] TypingIndicator component
+    - [ ] LoadingScreen component
+    - [ ] ErrorScreen component
+    - [ ] StatusIndicator component
+    - [ ] Avatar component (color/emoji display)
+
+[ ] Custom Hooks
+    - [ ] useWebSocket hook (WebSocket connection management)
+    - [ ] useSession hook (session state management)
+    - [ ] useChat hook (messaging functionality)
+    - [ ] useConnections hook (connection request handling)
+    - [ ] useTyping hook (typing indicator logic)
+    - [ ] useLocalStorage hook (session persistence)
+
+[ ] Utility Functions
+    - [ ] WebSocket client wrapper
+    - [ ] Message validation helpers
+    - [ ] Avatar generation utilities
+    - [ ] Time formatting functions
+    - [ ] Error handling utilities
+
+[ ] Configuration Files
+    - [ ] Environment variable setup
+    - [ ] Docker configuration
+    - [ ] ESLint configuration
+    - [ ] Prettier configuration
+    - [ ] GitHub Actions (CI/CD)
+
+[ ] Testing Setup
+    - [ ] Jest configuration
+    - [ ] React Testing Library setup
+    - [ ] WebSocket mocking utilities
+    - [ ] Component unit tests
+    - [ ] Integration tests for message flow
+
+## Phase 2: File Transfer
+[ ] Implement small file transfer via server relay
+[ ] Add WebRTC data channel setup for large files
+[ ] Create file chunking system with progress tracking
+[ ] Add file transfer UI with accept/reject prompts
+[ ] Implement transfer cancellation and resume
+[ ] Add file type validation and size limits
+
+## Phase 3: Voice Communication
+[ ] Set up WebRTC signaling through WebSocket
+[ ] Implement peer-to-peer voice calls
+[ ] Add call UI (incoming/outgoing/active states)
+[ ] Create fallback relay for restricted networks
+[ ] Add call quality indicators
+[ ] Implement call recording (optional)
+
+## Phase 4: Enhanced Features
+[ ] Add group creation and management
+[ ] Implement group messaging
+[ ] Add group voice calls (mesh or SFU)
+[ ] Create user status system (online/away/in-call)
+[ ] Add message history (short-term, in-memory)
+[ ] Implement user blocking functionality
+
+## Phase 5: Security & Admin
+[ ] Add HTTPS support with self-signed certs
+[ ] Implement rate limiting per session
+[ ] Create admin dashboard for server operator
+[ ] Add room password protection
+[ ] Implement session timeout and cleanup
+[ ] Add audit logging for connections
+
+## Phase 6: Polish & Deployment
+[ ] Create Docker container for easy deployment
+[ ] Add comprehensive error handling
+[ ] Implement reconnection logic for dropped connections
+[ ] Create deployment documentation
+[ ] Add performance monitoring
+[ ] Build automated testing suite
+
+## Technical Debt & Improvements
+[ ] Add comprehensive TypeScript coverage
+[ ] Implement proper error boundaries in React
+[ ] Add WebSocket connection health checks
+[ ] Optimize bundle size and loading performance
+[ ] Add accessibility features (ARIA labels, keyboard nav)
+[ ] Implement proper logging system
+[ ] Add configuration file support
+[ ] Create CLI for server management
+
+## Testing & Validation
+[ ] Test with 5-10 concurrent users
+[ ] Validate cross-browser compatibility (Chrome, Safari, Edge, Firefox)
+[ ] Test file transfer with various file sizes
+[ ] Validate WebRTC connectivity in different network configs
+[ ] Performance testing with 50+ concurrent users
+[ ] Test reconnection scenarios
+[ ] Validate mobile browser experience
+
+## Documentation
+[ ] Write deployment guide
+[ ] Create user manual
+[ ] Document API/WebSocket message format
+[ ] Add troubleshooting guide
+[ ] Create development setup instructions
+[ ] Write security considerations document
+
+## Future Enhancements (Post-MVP)
+[ ] Persistent user identity with key pairs
+[ ] End-to-end encryption for messages
+[ ] Push notifications within LAN
+[ ] Screen sharing capability
+[ ] Video calling support
+[ ] Message search functionality
+[ ] Custom themes/branding
+[ ] Plugin system for extensions
+[ ] Multi-room support
+[ ] Integration with existing auth systems
+
+## Current Priority: Phase 1 - Core Infrastructure
+Focus on getting the basic WebSocket server running with user discovery and text messaging.
+Next immediate tasks:
+1. Complete custom Next.js server setup
+2. Build WebSocket message routing
+3. Create user join/presence UI
+4. Implement connection request flow
+
+## Immediate Next Steps (Priority Order)
+1. **Build useWebSocket hook** - Core WebSocket connection management
+2. **Create JoinScreen component** - User entry point with name/avatar selection
+3. **Build MainInterface component** - Main app layout structure
+4. **Create UserList component** - Show online users in sidebar
+5. **Build ChatInterface component** - Message display and input area
+6. **Add ConnectionRequest handling** - Modal for connection requests
+7. **Implement basic messaging flow** - Send/receive text messages
+8. **Add typing indicators** - Real-time typing status
+9. **Polish UI and add error handling** - Loading states, error boundaries
+10. **Test end-to-end functionality** - Full user workflow testing
+
+## Files Created So Far
+✅ package.json - Dependencies and scripts
+✅ tsconfig.json - TypeScript configuration  
+✅ next.config.js - Next.js configuration
+✅ tailwind.config.js - Tailwind CSS setup
+✅ server.ts - Custom Next.js server with WebSocket
+✅ src/types/messages.ts - WebSocket message schemas
+✅ src/lib/session-manager.ts - Session management logic
+✅ src/lib/websocket-handler.ts - WebSocket message routing
+✅ src/lib/rate-limiter.ts - Rate limiting implementation
+✅ src/lib/network-utils.ts - Network utility functions
+✅ src/app/globals.css - Global styles and animations
+✅ src/app/layout.tsx - Root layout component
+✅ src/app/page.tsx - Main page component (skeleton)
+
+## Still Need to Create
+❌ All React components (JoinScreen, MainInterface, etc.)
+❌ All custom hooks (useWebSocket, useChat, etc.)
+❌ WebSocket client utilities
+❌ Avatar generation system
+❌ Error handling components
+❌ Testing setup and configuration files
