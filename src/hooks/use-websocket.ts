@@ -24,9 +24,11 @@ interface WebSocketHook extends WebSocketState {
   disconnect: () => void
 }
 
-const WEBSOCKET_URL = process.env.NODE_ENV === 'production' 
-  ? `wss://${window.location.host}/ws`
-  : `ws://${window.location.host}/ws`
+const WEBSOCKET_URL = typeof window !== 'undefined'
+  ? (process.env.NODE_ENV === 'production' 
+      ? `wss://${window.location.host}/ws`
+      : `ws://${window.location.host}/ws`)
+  : ''
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000] // Exponential backoff
 
