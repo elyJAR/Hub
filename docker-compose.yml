@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  hub:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MAX_USERS=100
+      - MAX_FILE_SIZE=104857600
+      - MESSAGE_RATE_LIMIT=60
+      - SESSION_TIMEOUT=300000
+      - LOG_LEVEL=info
+    volumes:
+      # Optional: Mount logs directory
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Add a reverse proxy for SSL termination
+  # nginx:
+  #   image: nginx:alpine
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./ssl:/etc/nginx/ssl:ro
+  #   depends_on:
+  #     - hub
+  #   restart: unless-stopped
+
+networks:
+  default:
+    name: hub-network

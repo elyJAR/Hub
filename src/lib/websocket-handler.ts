@@ -8,10 +8,21 @@ export class WebSocketMessageHandler {
   private sessionManager: SessionManager
   private rateLimiter: RateLimiter
   private socketToSession = new Map<WebSocket, string>()
+  private pendingRequests = new Map<string, { fromSessionId: string; toSessionId: string; expiresAt: number }>()
 
   constructor(sessionManager: SessionManager) {
     this.sessionManager = sessionManager
     this.rateLimiter = new RateLimiter()
+    
+    // Clean up expired requests every 30 seconds
+    setInterval(() => {
+      const now = Date.now()
+      for (const [requestId, request] of this.pendingRequests) {
+        if (request.expiresAt <= now) {
+          this.pendingRequests.delete(requestId)
+        }
+      }
+    }, 30000)
   }
 
   handleConnection(ws: WebSocket): void {
@@ -184,6 +195,14 @@ export class WebSocketMessageHandler {
       return
     }
 
+    // Store the pending request
+    const expiresAt = Date.now() + 30000 // 30 seconds
+    this.pendingRequests.set(message.id, {
+      fromSessionId: session.sessionId,
+      toSessionId: message.targetSessionId,
+      expiresAt,
+    })
+
     // Send request to target user
     this.sendMessage(targetSession.socket, {
       type: 'incoming-connection-request',
@@ -191,7 +210,7 @@ export class WebSocketMessageHandler {
       fromSessionId: session.sessionId,
       fromDisplayName: session.displayName,
       fromAvatar: session.avatar,
-      expiresAt: Date.now() + 30000, // 30 seconds
+      expiresAt,
     })
 
     // Confirm request sent
@@ -200,14 +219,34 @@ export class WebSocketMessageHandler {
       requestId: message.id,
       targetSessionId: message.targetSessionId,
     })
+
+    console.log(`Connection request sent from ${session.displayName} to ${targetSession.displayName}`)
   }
 
   private handleConnectionResponse(session: SessionData, message: any): void {
-    // Find the original request (in a real implementation, you'd store pending requests)
-    const requesterSession = this.sessionManager.getSession(message.requestId.split('-')[0]) // Simplified
-    if (!requesterSession) {
+    // Find the pending request
+    const pendingRequest = this.pendingRequests.get(message.requestId)
+    if (!pendingRequest) {
+      this.sendError(session.socket, 'REQUEST_NOT_FOUND', 'Connection request not found or expired')
       return
     }
+
+    // Verify this session is the target of the request
+    if (pendingRequest.toSessionId !== session.sessionId) {
+      this.sendError(session.socket, 'INVALID_REQUEST', 'You are not the target of this request')
+      return
+    }
+
+    // Get the requester session
+    const requesterSession = this.sessionManager.getSession(pendingRequest.fromSessionId)
+    if (!requesterSession) {
+      this.sendError(session.socket, 'SESSION_NOT_FOUND', 'Requester session not found')
+      this.pendingRequests.delete(message.requestId)
+      return
+    }
+
+    // Remove the pending request
+    this.pendingRequests.delete(message.requestId)
 
     if (message.accepted) {
       // Establish connection
@@ -227,6 +266,8 @@ export class WebSocketMessageHandler {
         displayName: session.displayName,
         avatar: session.avatar,
       })
+
+      console.log(`Connection established between ${session.displayName} and ${requesterSession.displayName}`)
     } else {
       // Notify requester of rejection
       this.sendMessage(requesterSession.socket, {
@@ -234,6 +275,8 @@ export class WebSocketMessageHandler {
         sessionId: session.sessionId,
         displayName: session.displayName,
       })
+
+      console.log(`Connection rejected by ${session.displayName}`)
     }
   }
 

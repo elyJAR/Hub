@@ -48,26 +48,33 @@ Hub - Development TODO
     - [ ] Add dark/light theme support
 
 ## Missing Components to Build (Phase 1 Completion)
-[ ] React Components
-    - [ ] JoinScreen component with form validation
-    - [ ] MainInterface component (main app layout)
-    - [ ] UserList component (sidebar with online users)
-    - [ ] ChatInterface component (message area)
-    - [ ] MessageBubble component (individual messages)
-    - [ ] ConnectionRequest component (modal/toast)
-    - [ ] TypingIndicator component
-    - [ ] LoadingScreen component
-    - [ ] ErrorScreen component
+[x] React Components
+    - [x] JoinScreen component with form validation
+    - [x] MainInterface component (main app layout)
+    - [x] UserList component (sidebar with online users)
+    - [x] ChatInterface component (message area)
+    - [x] MessageBubble component (individual messages) - integrated into ChatInterface
+    - [x] ConnectionRequest component (modal/toast)
+    - [x] TypingIndicator component - integrated into ChatInterface
+    - [x] LoadingScreen component
+    - [x] ErrorScreen component
     - [ ] StatusIndicator component
-    - [ ] Avatar component (color/emoji display)
+    - [x] Avatar component (color/emoji display)
 
-[ ] Custom Hooks
-    - [ ] useWebSocket hook (WebSocket connection management)
-    - [ ] useSession hook (session state management)
-    - [ ] useChat hook (messaging functionality)
-    - [ ] useConnections hook (connection request handling)
-    - [ ] useTyping hook (typing indicator logic)
-    - [ ] useLocalStorage hook (session persistence)
+[x] Custom Hooks
+    - [x] useWebSocket hook (WebSocket connection management)
+    - [x] useConnectionRequests hook (connection request handling)
+    - [x] useSession hook (session state management) - integrated into useWebSocket
+    - [x] useChat hook (messaging functionality) - integrated into ChatInterface
+    - [x] useConnections hook (connection request handling) - integrated into UserList
+    - [x] useTyping hook (typing indicator logic) - integrated into ChatInterface
+    - [x] useLocalStorage hook (session persistence) - integrated into main page
+
+[x] Backend Improvements
+    - [x] Fixed WebSocket message handling for join flow
+    - [x] Added proper pending request storage and cleanup
+    - [x] Improved connection request/response flow
+    - [x] Added request expiration handling
 
 [ ] Utility Functions
     - [ ] WebSocket client wrapper
@@ -77,18 +84,22 @@ Hub - Development TODO
     - [ ] Error handling utilities
 
 [ ] Configuration Files
-    - [ ] Environment variable setup
-    - [ ] Docker configuration
-    - [ ] ESLint configuration
-    - [ ] Prettier configuration
-    - [ ] GitHub Actions (CI/CD)
+    - [x] Environment variable setup (.env.example)
+    - [x] Docker configuration (Dockerfile, docker-compose.yml)
+    - [x] ESLint configuration
+    - [x] Prettier configuration
+    - [x] GitHub Actions (CI/CD)
+    - [x] VS Code settings and extensions
+    - [x] Git ignore file
+    - [x] License file (MIT)
 
-[ ] Testing Setup
-    - [ ] Jest configuration
-    - [ ] React Testing Library setup
-    - [ ] WebSocket mocking utilities
-    - [ ] Component unit tests
+[x] Testing Setup
+    - [x] Jest configuration
+    - [x] React Testing Library setup
+    - [x] WebSocket mocking utilities
+    - [x] Sample unit tests (SessionManager)
     - [ ] Integration tests for message flow
+    - [ ] E2E tests for user workflows
 
 ## Phase 2: File Transfer
 [ ] Implement small file transfer via server relay
@@ -178,16 +189,21 @@ Next immediate tasks:
 4. Implement connection request flow
 
 ## Immediate Next Steps (Priority Order)
-1. **Build useWebSocket hook** - Core WebSocket connection management
-2. **Create JoinScreen component** - User entry point with name/avatar selection
-3. **Build MainInterface component** - Main app layout structure
-4. **Create UserList component** - Show online users in sidebar
-5. **Build ChatInterface component** - Message display and input area
-6. **Add ConnectionRequest handling** - Modal for connection requests
-7. **Implement basic messaging flow** - Send/receive text messages
-8. **Add typing indicators** - Real-time typing status
-9. **Polish UI and add error handling** - Loading states, error boundaries
-10. **Test end-to-end functionality** - Full user workflow testing
+[x] **Build useWebSocket hook** - Core WebSocket connection management ✅
+[x] **Create JoinScreen component** - User entry point with name/avatar selection ✅
+[x] **Build MainInterface component** - Main app layout structure ✅
+[x] **Create UserList component** - Show online users in sidebar ✅
+[x] **Build ChatInterface component** - Message display and input area ✅
+[x] **Add ConnectionRequest handling** - Modal for connection requests ✅
+[x] **Implement basic messaging flow** - Send/receive text messages ✅
+[x] **Add typing indicators** - Real-time typing status ✅
+[x] **Add configuration files** - ESLint, Prettier, environment setup ✅
+[x] **Create Docker configuration** - Easy deployment setup ✅
+[x] **Add basic testing** - Unit tests for core functionality ✅
+[ ] **Test end-to-end functionality** - Full user workflow testing
+[ ] **Install dependencies and run dev server** - Test the application
+[ ] **Fix any runtime issues** - Debug and polish
+[ ] **Create production build** - Test production deployment
 
 ## Files Created So Far
 ✅ package.json - Dependencies and scripts

@@ -1,13 +1,45 @@
 {
   "name": "hub",
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "A zero-install, browser-based communication platform for local networks",
+  "author": "Hub Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elyJAR/Hub.git"
+  },
+  "bugs": {
+    "url": "https://github.com/elyJAR/Hub/issues"
+  },
+  "homepage": "https://github.com/elyJAR/Hub#readme",
+  "keywords": [
+    "local-network",
+    "communication",
+    "chat",
+    "webrtc",
+    "websocket",
+    "lan",
+    "peer-to-peer",
+    "real-time",
+    "messaging"
+  ],
   "private": true,
   "scripts": {
     "dev": "tsx server.ts",
     "build": "next build",
     "start": "NODE_ENV=production tsx server.ts",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "lint:fix": "next lint --fix",
+    "type-check": "tsc --noEmit",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
+    "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "docker:build": "docker build -t hub .",
+    "docker:run": "docker run -p 3000:3000 hub",
+    "docker:compose": "docker-compose up",
+    "docker:compose:build": "docker-compose up --build"
   },
   "dependencies": {
     "next": "^14.0.0",
@@ -24,10 +56,19 @@
     "@types/react-dom": "^18.0.0",
     "@types/ws": "^8.5.0",
     "@types/jsonwebtoken": "^9.0.0",
+    "@types/jest": "^29.5.0",
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/jest-dom": "^6.1.0",
+    "@testing-library/user-event": "^14.5.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
     "autoprefixer": "^10.0.0",
     "eslint": "^8.0.0",
     "eslint-config-next": "^14.0.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
     "postcss": "^8.0.0",
+    "prettier": "^3.0.0",
     "tailwindcss": "^3.3.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"

@@ -301,7 +301,7 @@ Contributors are recognized in:
 ## 📞 Contact
 
 - **Maintainer**: [Your Name](mailto:your.email@example.com)
-- **Project Issues**: [GitHub Issues](https://github.com/yourusername/hub/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/hub/discussions)
+- **Project Issues**: [GitHub Issues](https://github.com/elyJAR/hub/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/elyJAR/hub/discussions)
 
 Thank you for contributing to Hub! 🚀
