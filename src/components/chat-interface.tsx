@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { AvatarDisplay } from './avatar-picker'
-import { useWebSocket } from '@/hooks/use-websocket'
+import { useWebSocketContext } from '@/contexts/websocket-context'
 
 interface SessionData {
   sessionId: string
@@ -31,7 +31,7 @@ export function ChatInterface({
   targetUserId, 
   isConnected 
 }: ChatInterfaceProps) {
-  const { addEventListener, sendMessage } = useWebSocket()
+  const { addEventListener, sendMessage } = useWebSocketContext()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
   const [isTyping, setIsTyping] = useState(false)

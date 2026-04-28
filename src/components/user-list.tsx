@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { AvatarDisplay } from './avatar-picker'
-import { useWebSocket } from '@/hooks/use-websocket'
+import { useWebSocketContext } from '@/contexts/websocket-context'
 import { UserSession } from '@/types/messages'
 
 interface SessionData {
@@ -25,18 +25,11 @@ export function UserList({
   onSelectUser, 
   isConnected 
 }: UserListProps) {
-  const { addEventListener, sendMessage } = useWebSocket()
-  const [users, setUsers] = useState<UserSession[]>([])
+  const { addEventListener, sendMessage, users: allUsers } = useWebSocketContext()
   const [connections, setConnections] = useState<Set<string>>(new Set())
 
-  // Listen for presence updates
-  useEffect(() => {
-    const cleanup = addEventListener('presence-update', (data) => {
-      setUsers(data.users.filter((user: UserSession) => user.sessionId !== currentSession.sessionId))
-    })
-
-    return cleanup
-  }, [addEventListener, currentSession.sessionId])
+  // Filter out current user from the list
+  const users = allUsers.filter(user => user.sessionId !== currentSession.sessionId)
 
   // Listen for connection events
   useEffect(() => {

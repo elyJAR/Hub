@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useWebSocket } from './use-websocket'
+import { useWebSocketContext } from '@/contexts/websocket-context'
 
 interface ConnectionRequest {
   requestId: string
@@ -10,7 +10,7 @@ interface ConnectionRequest {
 }
 
 export function useConnectionRequests() {
-  const { addEventListener, sendMessage } = useWebSocket()
+  const { addEventListener, sendMessage } = useWebSocketContext()
   const [pendingRequests, setPendingRequests] = useState<ConnectionRequest[]>([])
   const [currentToast, setCurrentToast] = useState<ConnectionRequest | null>(null)
 

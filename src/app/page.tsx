@@ -3,11 +3,11 @@
 import { useEffect, useState } from 'react'
 import { JoinScreen } from '@/components/join-screen'
 import { MainInterface } from '@/components/main-interface'
-import { useWebSocket } from '@/hooks/use-websocket'
+import { WebSocketProvider, useWebSocketContext } from '@/contexts/websocket-context'
 import { LoadingScreen } from '@/components/loading-screen'
 import { ErrorScreen } from '@/components/error-screen'
 
-export default function HomePage() {
+function HomePageContent() {
   const [hasJoined, setHasJoined] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const { 
@@ -16,7 +16,7 @@ export default function HomePage() {
     session, 
     joinSession, 
     reconnect 
-  } = useWebSocket()
+  } = useWebSocketContext()
 
   useEffect(() => {
     // Check if user was previously connected (from localStorage)
@@ -83,5 +83,13 @@ export default function HomePage() {
       session={session}
       isConnected={isConnected}
     />
+  )
+}
+
+export default function HomePage() {
+  return (
+    <WebSocketProvider>
+      <HomePageContent />
+    </WebSocketProvider>
   )
 }
