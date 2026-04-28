@@ -35,7 +35,13 @@ export class WebSocketMessageHandler {
     try {
       const rawMessage = JSON.parse(data.toString())
       
-      // Validate message format
+      // Handle join message first (special case - no validation against main schema)
+      if (rawMessage.type === 'join') {
+        this.handleJoinMessage(ws, rawMessage)
+        return
+      }
+      
+      // Validate message format for all other messages
       const validationResult = WebSocketMessageSchema.safeParse(rawMessage)
       if (!validationResult.success) {
         this.sendError(ws, 'INVALID_MESSAGE', 'Message validation failed', validationResult.error)
@@ -46,12 +52,6 @@ export class WebSocketMessageHandler {
       
       // Get session for this socket
       const sessionId = this.socketToSession.get(ws)
-      
-      // Handle join message (special case - no session required)
-      if (message.type === 'join') {
-        this.handleJoinMessage(ws, message as any)
-        return
-      }
 
       // For all other messages, require valid session
       if (!sessionId) {
