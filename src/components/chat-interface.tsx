@@ -3,12 +3,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { AvatarDisplay } from './avatar-picker'
 import { useWebSocketContext } from '@/contexts/websocket-context'
+import { useWebRTCFileTransfer } from '@/hooks/use-webrtc-file'
 import EmojiPicker from 'emoji-picker-react'
 import { MessageSquare, File, Download, Pencil, Trash2, X, SmilePlus, Paperclip, Send, Check, Phone } from 'lucide-react'
 import { toast } from '@/lib/toast'
 
 interface SessionData {
   sessionId: string
+  persistentId: string
   token: string
   displayName: string
   avatar?: string
@@ -17,6 +19,7 @@ interface SessionData {
 interface Message {
   id: string
   fromSessionId: string
+  fromPersistentId?: string
   fromDisplayName: string
   content: string
   timestamp: number
@@ -37,10 +40,12 @@ interface Message {
 interface ChatInterfaceProps {
   currentSession: SessionData
   targetUserId: string
+  targetPersistentId: string
   targetUser?: {
     displayName: string
     avatar?: string
     status?: string
+    persistentId: string
   }
   isConnected: boolean
   onStartCall?: (userId: string) => void
@@ -49,12 +54,15 @@ interface ChatInterfaceProps {
 export function ChatInterface({ 
   currentSession, 
   targetUserId, 
+  targetPersistentId,
   targetUser,
   isConnected,
   onStartCall
 }: ChatInterfaceProps) {
   const { addEventListener, sendMessage } = useWebSocketContext()
-  const getStorageKey = () => `hub-chat-${currentSession.sessionId}-${targetUserId}`
+  const { startWebRTCFileTransfer, expectIncomingFile, transfers } = useWebRTCFileTransfer()
+  
+  const getStorageKey = () => `hub-chat-${currentSession.persistentId}-${targetPersistentId}`
 
   const [messages, setMessages] = useState<Message[]>(() => {
     if (typeof window !== 'undefined') {
@@ -91,16 +99,18 @@ export function ChatInterface({
     if (typeof window !== 'undefined') {
       localStorage.setItem(getStorageKey(), JSON.stringify(messages))
     }
-  }, [messages, currentSession.sessionId, targetUserId])
+  }, [messages, currentSession.persistentId, targetPersistentId])
 
   // Listen for incoming messages
   useEffect(() => {
     const cleanup1 = addEventListener('chat-message-received', (data) => {
-      if (data.fromSessionId === targetUserId) {
+      // Use persistentId to match the conversation
+      if (data.fromPersistentId === targetPersistentId) {
         setMessages(prev => [...prev, {
           id: data.messageId,
           content: data.content,
           fromSessionId: data.fromSessionId,
+          fromPersistentId: data.fromPersistentId,
           fromDisplayName: data.fromDisplayName,
           timestamp: data.timestamp,
           status: 'delivered'
@@ -150,12 +160,6 @@ export function ChatInterface({
       ))
     })
 
-    const cleanupTyping = addEventListener('typing-indicator-received', (data) => {
-      if (data.fromSessionId === targetUserId) {
-        setOtherUserTyping(data.isTyping)
-      }
-    })
-
     const cleanupFileReq = addEventListener('incoming-file-transfer-request', (data) => {
       if (data.fromSessionId === targetUserId) {
         setMessages(prev => [...prev, {
@@ -179,54 +183,23 @@ export function ChatInterface({
     })
 
     const cleanupFileRes = addEventListener('file-transfer-response', async (data) => {
-      if (data.fromSessionId === targetUserId) {
-        if (data.accepted) {
-          // File accepted, send data
-          const file = pendingFilesRef.current.get(data.requestId)
-          if (file) {
-            const reader = new FileReader()
-            reader.onload = (e) => {
-              const base64Data = e.target?.result as string
-              sendMessage({
-                type: 'file-transfer-data',
-                targetSessionId: targetUserId,
-                fileId: data.requestId,
-                fileName: file.name,
-                fileType: file.type,
-                data: base64Data
-              } as any)
-              
-              setMessages(prev => prev.map(msg => 
-                msg.id === data.requestId ? { ...msg, content: `Sent file: ${file.name}`, fileData: { ...msg.fileData!, transferStatus: 'completed' } } : msg
-              ))
-              pendingFilesRef.current.delete(data.requestId)
-            }
-            reader.readAsDataURL(file)
-          }
-        } else {
-          // Declined
-          setMessages(prev => prev.map(msg => 
-            msg.id === data.requestId ? { ...msg, content: `File transfer declined: ${msg.fileData?.fileName}`, fileData: { ...msg.fileData!, transferStatus: 'declined' } } : msg
-          ))
+      if (data.fromSessionId === targetUserId && data.accepted) {
+        // Trigger WebRTC transfer if we have the file
+        const file = pendingFilesRef.current.get(data.requestId)
+        if (file) {
+          startWebRTCFileTransfer(targetUserId, data.requestId, file)
           pendingFilesRef.current.delete(data.requestId)
         }
+        
+        setMessages(prev => prev.map(msg => 
+          msg.id === data.requestId ? { ...msg, fileData: { ...msg.fileData!, transferStatus: 'accepted' } } : msg
+        ))
       }
     })
 
-    const cleanupFileData = addEventListener('file-transfer-data', (data) => {
+    const cleanupTyping = addEventListener('typing-indicator-received', (data) => {
       if (data.fromSessionId === targetUserId) {
-        setMessages(prev => prev.map(msg => 
-          msg.id === data.fileId ? { 
-            ...msg, 
-            content: `Received file: ${data.fileName}`,
-            type: 'file-transfer',
-            fileData: { 
-              ...msg.fileData!, 
-              transferStatus: 'completed',
-              dataUrl: data.data
-            } 
-          } : msg
-        ))
+        setOtherUserTyping(data.isTyping)
       }
     })
 
@@ -240,9 +213,8 @@ export function ChatInterface({
       cleanupTyping()
       cleanupFileReq()
       cleanupFileRes()
-      cleanupFileData()
     }
-  }, [addEventListener, targetUserId, sendMessage])
+  }, [addEventListener, targetUserId, sendMessage, startWebRTCFileTransfer])
 
   // Close emoji picker when clicking outside
   useEffect(() => {
@@ -293,7 +265,7 @@ export function ChatInterface({
     e.preventDefault()
     
     if (!inputValue.trim() || !isConnected) return
-
+    
     if (editingMessageId) {
       sendMessage({
         type: 'chat-message-edit',
@@ -352,14 +324,9 @@ export function ChatInterface({
     })
   }
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement> | { target: { files: FileList | File[] } }) => {
     const file = e.target.files?.[0]
     if (!file || !isConnected) return
-
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("File is too large! For now, only files under 5MB are supported.")
-      return
-    }
 
     const fileId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     pendingFilesRef.current.set(fileId, file)
@@ -372,7 +339,7 @@ export function ChatInterface({
       fileSize: file.size,
       fileType: file.type,
       id: fileId,
-    } as any)
+    })
 
     // Add local message
     const newMessage: Message = {
@@ -398,16 +365,21 @@ export function ChatInterface({
   }
 
   const handleFileResponse = (fileId: string, accepted: boolean) => {
+    const msg = messages.find(m => m.id === fileId)
+    if (accepted && msg && msg.fileData) {
+      expectIncomingFile(fileId, msg.fileData.fileSize, msg.fileData.fileType, msg.fileData.fileName)
+    }
+
     sendMessage({
       type: 'file-transfer-response',
       targetSessionId: targetUserId,
       requestId: fileId,
       accepted
-    } as any)
+    })
 
     setMessages(prev => prev.map(msg => 
       msg.id === fileId 
-        ? { ...msg, fileData: { ...msg.fileData!, transferStatus: accepted ? 'completed' : 'declined' } }
+        ? { ...msg, fileData: { ...msg.fileData!, transferStatus: accepted ? 'accepted' : 'declined' } }
         : msg
     ))
     
@@ -418,8 +390,46 @@ export function ChatInterface({
     }
   }
 
+  const [isDragging, setIsDragging] = useState(false)
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = () => {
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) {
+      handleFileSelect({ target: { files: [file] } } as any)
+    }
+  }
+
   return (
-    <div className="h-full flex flex-col">
+    <div 
+      className={`h-full flex flex-col relative ${isDragging ? 'bg-primary/5' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragging && (
+        <div className="absolute inset-0 bg-primary/10 backdrop-blur-[2px] z-50 flex items-center justify-center border-2 border-dashed border-primary m-2 rounded-xl pointer-events-none">
+          <div className="bg-background/90 p-6 rounded-2xl shadow-xl flex flex-col items-center space-y-3 scale-110 transition-transform">
+            <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center">
+              <Paperclip className="w-8 h-8 text-primary animate-bounce" />
+            </div>
+            <p className="font-bold text-lg text-primary">Drop to send file</p>
+            <p className="text-sm text-muted-foreground text-center max-w-[200px]">
+              Files will be sent directly to {targetUser?.displayName}
+            </p>
+          </div>
+        </div>
+      )}
       <div className="p-4 border-b border-border bg-card flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <AvatarDisplay avatarId={targetUser?.avatar} size="md" />
@@ -455,6 +465,7 @@ export function ChatInterface({
           messages.map((message, index) => {
             const isCurrentUser = message.fromSessionId === currentSession.sessionId
             const showAvatar = index === 0 || messages[index - 1].fromSessionId !== message.fromSessionId
+            const transfer = transfers[message.id]
 
             return (
               <div
@@ -489,30 +500,55 @@ export function ChatInterface({
                       
                       {!isCurrentUser && message.fileData.transferStatus === 'pending' && (
                         <div className="flex space-x-2 mt-2">
-                          <button onClick={() => handleFileResponse(message.fileData!.fileId, true)} className="flex-1 text-xs py-1 px-2 bg-green-500 text-white rounded hover:bg-green-600 transition">Accept</button>
-                          <button onClick={() => handleFileResponse(message.fileData!.fileId, false)} className="flex-1 text-xs py-1 px-2 bg-red-500 text-white rounded hover:bg-red-600 transition">Decline</button>
+                          <button 
+                            onClick={() => handleFileResponse(message.id, true)} 
+                            className="flex-1 text-xs py-1 px-2 bg-green-500 text-white rounded hover:bg-green-600 transition"
+                          >
+                            Accept
+                          </button>
+                          <button 
+                            onClick={() => handleFileResponse(message.id, false)} 
+                            className="flex-1 text-xs py-1 px-2 bg-red-500 text-white rounded hover:bg-red-600 transition"
+                          >
+                            Decline
+                          </button>
                         </div>
                       )}
                       
                       {message.fileData.transferStatus === 'declined' && (
                         <p className="text-xs text-red-400 italic">Transfer declined</p>
                       )}
-                      {message.fileData.transferStatus === 'completed' && isCurrentUser && (
-                        <p className="text-xs text-green-400 italic">Transfer complete</p>
-                      )}
-                    </div>
-                  ) : message.type === 'file-transfer' && message.fileData?.dataUrl ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2 bg-background/20 p-2 rounded">
-                        <Download className="w-6 h-6" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{message.fileData.fileName}</p>
-                          <p className="text-xs opacity-70">{(message.fileData.fileSize / 1024).toFixed(1)} KB</p>
+
+                      {transfer && transfer.status === 'transferring' && (
+                        <div className="w-full bg-black/20 rounded-full h-1.5 mt-2 overflow-hidden">
+                          <div 
+                            className="bg-blue-400 h-1.5 rounded-full transition-all duration-300" 
+                            style={{ width: `${transfer.progress}%` }}
+                          />
                         </div>
-                      </div>
-                      <a href={message.fileData.dataUrl} download={`Hub_${message.fileData.fileName}`} className="block w-full text-center text-xs py-1.5 px-2 bg-primary-foreground/20 text-current rounded hover:bg-primary-foreground/30 transition">
-                        Download File
-                      </a>
+                      )}
+
+                      {transfer && transfer.status === 'error' && (
+                        <p className="text-xs text-red-500 italic mt-1">{transfer.error}</p>
+                      )}
+
+                      {(message.fileData.dataUrl || transfer?.dataUrl) && (
+                        <a 
+                          href={message.fileData.dataUrl || transfer?.dataUrl} 
+                          download={`Hub_Downloads_${message.fileData?.fileName}`} 
+                          className={`mt-2 text-xs text-center py-1.5 px-2 rounded transition-colors flex items-center justify-center space-x-1 ${
+                            isCurrentUser 
+                              ? 'bg-primary-foreground/20 hover:bg-primary-foreground/30 text-primary-foreground' 
+                              : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                          }`}
+                          onClick={() => {
+                            toast.success(`Downloading to your Downloads folder as Hub_Downloads_${message.fileData?.fileName}`)
+                          }}
+                        >
+                          <Download className="w-3 h-3" />
+                          <span>Download File</span>
+                        </a>
+                      )}
                     </div>
                   ) : (
                     <p className="break-words">
@@ -554,11 +590,11 @@ export function ChatInterface({
 
         {otherUserTyping && (
           <div className="flex justify-start">
-            <div className="message-bubble received">
-              <div className="typing-dots">
-                <div className="typing-dot"></div>
-                <div className="typing-dot"></div>
-                <div className="typing-dot"></div>
+            <div className="bg-muted text-foreground rounded-2xl rounded-tl-sm px-4 py-2 typing-dots">
+              <div className="flex space-x-1">
+                <div className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce" />
+                <div className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce [animation-delay:0.2s]" />
+                <div className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce [animation-delay:0.4s]" />
               </div>
             </div>
           </div>
@@ -567,9 +603,7 @@ export function ChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Message Input */}
       <div className="p-4 border-t border-border bg-card relative">
-        {/* Emoji Picker Popover */}
         {showEmojiPicker && (
           <div className="absolute bottom-[80px] right-4 z-50 shadow-xl rounded-lg" ref={emojiPickerRef}>
             <EmojiPicker 

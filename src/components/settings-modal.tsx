@@ -6,6 +6,7 @@ import { X } from 'lucide-react'
 
 interface SessionData {
   sessionId: string
+  persistentId: string
   token: string
   displayName: string
   avatar?: string

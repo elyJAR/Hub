@@ -101,12 +101,12 @@ All core features are implemented and working:
 
 ## Phase 2: File Transfer (Future)
 [x] Implement small file transfer via server relay
-[ ] Add WebRTC data channel setup for large files
-[ ] Create file chunking system with progress tracking
+[x] Add WebRTC data channel setup for large files
+[x] Create file chunking system with progress tracking
 [x] Add file transfer UI with accept/reject prompts
 [ ] Implement transfer cancellation and resume
 [ ] Add file type validation and size limits
-[ ] Drag & drop file upload
+[x] Drag & drop file upload
 
 ## Phase 3: Voice/Video Communication (Future)
 [ ] Set up WebRTC signaling through WebSocket

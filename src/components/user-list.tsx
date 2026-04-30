@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react'
 import { AvatarDisplay } from './avatar-picker'
 import { useWebSocketContext } from '@/contexts/websocket-context'
 import { UserSession } from '@/types/messages'
-import { Users, Phone, Loader2 } from 'lucide-react'
+import { Users, Loader2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
 
 interface SessionData {
   sessionId: string
+  persistentId: string
   token: string
   displayName: string
   avatar?: string
@@ -16,17 +17,15 @@ interface SessionData {
 
 interface UserListProps {
   currentSession: SessionData
-  selectedUserId?: string
-  onSelectUser: (userId: string) => void
-  onStartCall?: (userId: string) => void
+  selectedUserPersistentId?: string
+  onSelectUser: (persistentId: string) => void
   isConnected: boolean
 }
 
 export function UserList({ 
   currentSession, 
-  selectedUserId, 
+  selectedUserPersistentId, 
   onSelectUser,
-  onStartCall, 
   isConnected 
 }: UserListProps) {
   const { addEventListener, sendMessage, users: allUsers } = useWebSocketContext()
@@ -36,49 +35,61 @@ export function UserList({
   // Filter out current user from the list
   const users = allUsers.filter(user => user.sessionId !== currentSession.sessionId)
 
-  // Load persistent connections from localStorage (by displayName)
+  const handleConnectionRequest = (targetUserId: string) => {
+    console.log('[UserList] Sending connection request to:', targetUserId)
+    
+    // Generate unique request ID
+    const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    
+    // Add to pending immediately for instant feedback
+    setPendingRequests(prev => new Set([...prev, targetUserId]))
+    
+    // Show toast immediately
+    toast.info('Connection request sent')
+    
+    sendMessage({
+      type: 'connection-request',
+      targetSessionId: targetUserId,
+      id: requestId,
+    } as any)
+
+    // Set a timeout to clear the pending state and show a notification
+    setTimeout(() => {
+      setPendingRequests(prev => {
+        if (prev.has(targetUserId)) {
+          const newSet = new Set(prev)
+          newSet.delete(targetUserId)
+          toast.info('Connection request timed out')
+          return newSet
+        }
+        return prev
+      })
+    }, 30000)
+  }
+
+  // Load persistent connections from localStorage (by persistentId)
   useEffect(() => {
-    const savedConnections = localStorage.getItem(`hub-connections-${currentSession.displayName}`)
-    if (savedConnections) {
+    const trustedUsersStr = localStorage.getItem('hub-trusted-users')
+    if (trustedUsersStr) {
       try {
-        const parsed = JSON.parse(savedConnections) as string[]
-        console.log('[UserList] Loaded saved connection displayNames:', parsed)
+        const trustedIds = JSON.parse(trustedUsersStr) as string[]
+        console.log('[UserList] Online trusted users checking...')
         
-        // Convert displayNames to current sessionIds
-        const sessionIds = new Set<string>()
-        parsed.forEach(displayName => {
-          const user = allUsers.find(u => u.displayName === displayName)
-          if (user) {
-            sessionIds.add(user.sessionId)
-            console.log(`[UserList] Mapped ${displayName} -> ${user.sessionId}`)
+        // Find online users who are in our trusted list
+        const onlineFriends = users.filter(user => user.persistentId && trustedIds.includes(user.persistentId))
+        
+        onlineFriends.forEach(friend => {
+          // If not already connected and not already pending, auto-send request
+          if (!connections.has(friend.sessionId) && !pendingRequests.has(friend.sessionId)) {
+            console.log(`[UserList] Auto-connecting to friend: ${friend.displayName}`)
+            handleConnectionRequest(friend.sessionId)
           }
         })
-        
-        setConnections(sessionIds)
       } catch (e) {
-        console.error('Failed to parse saved connections', e)
+        console.error('Failed to parse trusted users', e)
       }
     }
-  }, [currentSession.displayName, allUsers])
-
-  // Save connections to localStorage (by displayName) whenever they change
-  useEffect(() => {
-    if (connections.size > 0) {
-      // Convert sessionIds to displayNames for storage
-      const displayNames = Array.from(connections)
-        .map(sessionId => {
-          const user = allUsers.find(u => u.sessionId === sessionId)
-          return user?.displayName
-        })
-        .filter(Boolean) as string[]
-      
-      console.log('[UserList] Saving connection displayNames:', displayNames)
-      localStorage.setItem(
-        `hub-connections-${currentSession.displayName}`,
-        JSON.stringify(displayNames)
-      )
-    }
-  }, [connections, currentSession.displayName, allUsers])
+  }, [users.length, connections.size, pendingRequests.size])
 
   // Listen for connection events
   useEffect(() => {
@@ -116,24 +127,7 @@ export function UserList({
     }
   }, [addEventListener])
 
-  const handleConnectionRequest = (targetUserId: string) => {
-    console.log('[UserList] Sending connection request to:', targetUserId)
-    
-    // Generate unique request ID
-    const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    
-    // Add to pending immediately for instant feedback
-    setPendingRequests(prev => new Set([...prev, targetUserId]))
-    
-    // Show toast immediately
-    toast.info('Connection request sent')
-    
-    sendMessage({
-      type: 'connection-request',
-      targetSessionId: targetUserId,
-      id: requestId,
-    } as any)
-  }
+
 
   const isUserConnected = (userId: string) => connections.has(userId)
   const isRequestPending = (userId: string) => pendingRequests.has(userId)
@@ -175,11 +169,13 @@ export function UserList({
             {users.map((user) => {
               const connected = isUserConnected(user.sessionId)
               const pending = isRequestPending(user.sessionId)
-              const isSelected = selectedUserId === user.sessionId
+              const isSelected = selectedUserPersistentId === user.persistentId
 
               return (
                 <div
                   key={user.sessionId}
+                  data-testid="user-item"
+                  data-user-name={user.displayName}
                   className={`
                     p-3 rounded-lg cursor-pointer transition-colors
                     ${isSelected 
@@ -189,7 +185,7 @@ export function UserList({
                   `}
                   onClick={() => {
                     if (connected) {
-                      onSelectUser(user.sessionId)
+                      onSelectUser(user.persistentId)
                     }
                   }}
                 >
@@ -245,7 +241,7 @@ export function UserList({
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          onSelectUser(user.sessionId)
+                          onSelectUser(user.persistentId)
                         }}
                         className="w-full text-xs bg-muted text-foreground py-1.5 px-3 rounded hover:bg-muted/80 transition-colors"
                       >

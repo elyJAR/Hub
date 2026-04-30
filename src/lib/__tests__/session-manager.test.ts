@@ -23,7 +23,7 @@ describe('SessionManager', () => {
 
   describe('createSession', () => {
     it('should create a new session with valid display name', () => {
-      const session = sessionManager.createSession(mockSocket, 'TestUser')
+      const session = sessionManager.createSession(mockSocket, 'TestUser', 'pid-123')
 
       expect(session).toBeDefined()
       expect(session.displayName).toBe('TestUser')
@@ -33,14 +33,14 @@ describe('SessionManager', () => {
     })
 
     it('should create session with avatar', () => {
-      const session = sessionManager.createSession(mockSocket, 'TestUser', 'blue-smile')
+      const session = sessionManager.createSession(mockSocket, 'TestUser', 'pid-123', 'blue-smile')
 
       expect(session.avatar).toBe('blue-smile')
     })
 
     it('should generate unique session IDs', () => {
-      const session1 = sessionManager.createSession(mockSocket, 'User1')
-      const session2 = sessionManager.createSession(mockSocket, 'User2')
+      const session1 = sessionManager.createSession(mockSocket, 'User1', 'pid-1')
+      const session2 = sessionManager.createSession(mockSocket, 'User2', 'pid-2')
 
       expect(session1.sessionId).not.toBe(session2.sessionId)
     })
@@ -48,7 +48,7 @@ describe('SessionManager', () => {
 
   describe('getSession', () => {
     it('should retrieve existing session', () => {
-      const created = sessionManager.createSession(mockSocket, 'TestUser')
+      const created = sessionManager.createSession(mockSocket, 'TestUser', 'pid-123')
       const retrieved = sessionManager.getSession(created.sessionId)
 
       expect(retrieved).toBeDefined()
@@ -65,8 +65,8 @@ describe('SessionManager', () => {
 
   describe('removeSession', () => {
     it('should remove session and clean up connections', () => {
-      const session1 = sessionManager.createSession(mockSocket, 'User1')
-      const session2 = sessionManager.createSession(mockSocket, 'User2')
+      const session1 = sessionManager.createSession(mockSocket, 'User1', 'pid-1')
+      const session2 = sessionManager.createSession(mockSocket, 'User2', 'pid-2')
 
       sessionManager.addConnection(session1.sessionId, session2.sessionId)
       sessionManager.removeSession(session1.sessionId)
@@ -82,9 +82,9 @@ describe('SessionManager', () => {
 
   describe('getAllSessions', () => {
     it('should return all active sessions', () => {
-      sessionManager.createSession(mockSocket, 'User1')
-      sessionManager.createSession(mockSocket, 'User2')
-      sessionManager.createSession(mockSocket, 'User3')
+      sessionManager.createSession(mockSocket, 'User1', 'pid-1')
+      sessionManager.createSession(mockSocket, 'User2', 'pid-2')
+      sessionManager.createSession(mockSocket, 'User3', 'pid-3')
 
       const sessions = sessionManager.getAllSessions()
 
@@ -103,8 +103,8 @@ describe('SessionManager', () => {
 
   describe('addConnection', () => {
     it('should establish bidirectional connection between users', () => {
-      const session1 = sessionManager.createSession(mockSocket, 'User1')
-      const session2 = sessionManager.createSession(mockSocket, 'User2')
+      const session1 = sessionManager.createSession(mockSocket, 'User1', 'pid-1')
+      const session2 = sessionManager.createSession(mockSocket, 'User2', 'pid-2')
 
       sessionManager.addConnection(session1.sessionId, session2.sessionId)
 
@@ -113,7 +113,7 @@ describe('SessionManager', () => {
     })
 
     it('should handle non-existent sessions gracefully', () => {
-      const session1 = sessionManager.createSession(mockSocket, 'User1')
+      const session1 = sessionManager.createSession(mockSocket, 'User1', 'pid-1')
 
       expect(() => {
         sessionManager.addConnection(session1.sessionId, 'non-existent')
@@ -123,8 +123,8 @@ describe('SessionManager', () => {
 
   describe('isConnected', () => {
     it('should return true for connected users', () => {
-      const session1 = sessionManager.createSession(mockSocket, 'User1')
-      const session2 = sessionManager.createSession(mockSocket, 'User2')
+      const session1 = sessionManager.createSession(mockSocket, 'User1', 'pid-1')
+      const session2 = sessionManager.createSession(mockSocket, 'User2', 'pid-2')
 
       sessionManager.addConnection(session1.sessionId, session2.sessionId)
 
@@ -133,8 +133,8 @@ describe('SessionManager', () => {
     })
 
     it('should return false for non-connected users', () => {
-      const session1 = sessionManager.createSession(mockSocket, 'User1')
-      const session2 = sessionManager.createSession(mockSocket, 'User2')
+      const session1 = sessionManager.createSession(mockSocket, 'User1', 'pid-1')
+      const session2 = sessionManager.createSession(mockSocket, 'User2', 'pid-2')
 
       expect(sessionManager.isConnected(session1.sessionId, session2.sessionId)).toBe(false)
     })
@@ -142,7 +142,7 @@ describe('SessionManager', () => {
 
   describe('JWT token management', () => {
     it('should generate valid JWT token', () => {
-      const session = sessionManager.createSession(mockSocket, 'TestUser')
+      const session = sessionManager.createSession(mockSocket, 'TestUser', 'pid-123')
       const token = sessionManager.generateToken(session.sessionId)
 
       expect(token).toBeDefined()
@@ -151,7 +151,7 @@ describe('SessionManager', () => {
     })
 
     it('should verify valid token', () => {
-      const session = sessionManager.createSession(mockSocket, 'TestUser')
+      const session = sessionManager.createSession(mockSocket, 'TestUser', 'pid-123')
       const token = sessionManager.generateToken(session.sessionId)
       const verified = sessionManager.verifyToken(token)
 
@@ -167,7 +167,7 @@ describe('SessionManager', () => {
 
   describe('cleanupInactiveSessions', () => {
     it('should remove sessions that exceed timeout', () => {
-      const session = sessionManager.createSession(mockSocket, 'TestUser')
+      const session = sessionManager.createSession(mockSocket, 'TestUser', 'pid-123')
       
       // Manually set last activity to past
       const sessionData = sessionManager.getSession(session.sessionId)
@@ -182,7 +182,7 @@ describe('SessionManager', () => {
     })
 
     it('should keep active sessions', () => {
-      const session = sessionManager.createSession(mockSocket, 'TestUser')
+      const session = sessionManager.createSession(mockSocket, 'TestUser', 'pid-123')
       
       sessionManager.cleanupInactiveSessions(5 * 60 * 1000)
 

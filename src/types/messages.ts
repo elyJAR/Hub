@@ -10,6 +10,7 @@ export const BaseMessageSchema = z.object({
 // User session info
 export const UserSessionSchema = z.object({
   sessionId: z.string(),
+  persistentId: z.string(), // Permanent ID stored in user's localStorage
   displayName: z.string(),
   avatar: z.string().optional(),
   status: z.enum(['online', 'in-call', 'away', 'offline']),
@@ -116,6 +117,37 @@ export const WebRTCIceCandidateSchema = BaseMessageSchema.extend({
   }),
 })
 
+export const WebRTCFileOfferSchema = BaseMessageSchema.extend({
+  type: z.literal('webrtc-file-offer'),
+  targetSessionId: z.string(),
+  fileId: z.string(),
+  offer: z.object({
+    type: z.literal('offer'),
+    sdp: z.string(),
+  }),
+})
+
+export const WebRTCFileAnswerSchema = BaseMessageSchema.extend({
+  type: z.literal('webrtc-file-answer'),
+  targetSessionId: z.string(),
+  fileId: z.string(),
+  answer: z.object({
+    type: z.literal('answer'),
+    sdp: z.string(),
+  }),
+})
+
+export const WebRTCFileIceCandidateSchema = BaseMessageSchema.extend({
+  type: z.literal('webrtc-file-ice-candidate'),
+  targetSessionId: z.string(),
+  fileId: z.string(),
+  candidate: z.object({
+    candidate: z.string(),
+    sdpMLineIndex: z.number().nullable(),
+    sdpMid: z.string().nullable(),
+  }),
+})
+
 // WebRTC call control
 export const WebRTCCallDeclinedSchema = BaseMessageSchema.extend({
   type: z.literal('webrtc-call-declined'),
@@ -145,6 +177,9 @@ export const WebSocketMessageSchema = z.discriminatedUnion('type', [
   WebRTCIceCandidateSchema,
   WebRTCCallDeclinedSchema,
   WebRTCCallEndedSchema,
+  WebRTCFileOfferSchema,
+  WebRTCFileAnswerSchema,
+  WebRTCFileIceCandidateSchema,
 ])
 
 // Type exports

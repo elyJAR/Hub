@@ -43,6 +43,7 @@ export function useConnectionRequests() {
     const interval = setInterval(() => {
       const now = Date.now()
       setPendingRequests(prev => {
+        const expired = prev.filter(req => req.expiresAt <= now)
         const filtered = prev.filter(req => req.expiresAt > now)
         
         // If current toast request expired, clear it

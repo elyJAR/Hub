@@ -51,6 +51,7 @@ export class SessionManager {
       for (const [id, s] of this.sessions) {
         toSave[id] = {
           sessionId: s.sessionId,
+          persistentId: s.persistentId,
           displayName: s.displayName,
           avatar: s.avatar,
           status: s.status,
@@ -65,7 +66,7 @@ export class SessionManager {
     }
   }
 
-  createSession(socket: WebSocket, displayName: string, avatar?: string, requestedSessionId?: string): SessionData {
+  createSession(socket: WebSocket, displayName: string, persistentId: string, avatar?: string, requestedSessionId?: string): SessionData {
     const sessionId = requestedSessionId && this.sessions.has(requestedSessionId) 
         ? requestedSessionId 
         : (requestedSessionId || crypto.randomBytes(4).toString('hex'))
@@ -76,12 +77,14 @@ export class SessionManager {
         // Reconnecting
         session.socket = socket
         session.displayName = displayName
+        session.persistentId = persistentId
         session.avatar = avatar
         session.status = 'online'
         session.lastActivity = now
     } else {
         session = {
           sessionId,
+          persistentId,
           displayName,
           avatar,
           status: 'online',
@@ -119,6 +122,7 @@ export class SessionManager {
   getAllSessions(): UserSession[] {
     return Array.from(this.sessions.values()).map(session => ({
       sessionId: session.sessionId,
+      persistentId: session.persistentId,
       displayName: session.displayName,
       avatar: session.avatar,
       status: session.status,

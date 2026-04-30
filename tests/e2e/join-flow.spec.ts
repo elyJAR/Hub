@@ -18,22 +18,27 @@ test.describe('Join Flow', () => {
     
     // Test empty name
     await joinButton.click()
-    await expect(page.getByText(/display name is required/i)).toBeVisible()
+    const error = page.getByTestId('join-error')
+    await expect(error).toBeVisible()
+    await expect(error).toContainText(/required/i)
     
     // Test name too short
     await nameInput.fill('ab')
     await joinButton.click()
-    await expect(page.getByText(/at least 3 characters/i)).toBeVisible()
+    await expect(error).toBeVisible()
+    await expect(error).toContainText(/at least 3 characters/i)
     
     // Test name too long
     await nameInput.fill('a'.repeat(51))
     await joinButton.click()
-    await expect(page.getByText(/less than 50 characters/i)).toBeVisible()
+    await expect(error).toBeVisible()
+    await expect(error).toContainText(/less than 50 characters/i)
     
     // Test invalid characters
     await nameInput.fill('test@user!')
     await joinButton.click()
-    await expect(page.getByText(/can only contain/i)).toBeVisible()
+    await expect(error).toBeVisible()
+    await expect(error).toContainText(/can only contain/i)
   })
 
   test('should successfully join with valid name', async ({ page }) => {
@@ -55,8 +60,8 @@ test.describe('Join Flow', () => {
     await joinButton.click()
     
     // Wait for main interface to load
-    await expect(page.getByText(/welcome to hub/i)).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText('TestUser')).toBeVisible()
+    await expect(page.getByRole('heading', { name: /welcome to hub/i })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('heading', { name: 'TestUser', exact: true })).toBeVisible()
   })
 
   test('should persist session on page reload', async ({ page }) => {
@@ -67,13 +72,13 @@ test.describe('Join Flow', () => {
     await page.getByRole('button', { name: /join hub/i }).click()
     
     // Wait for main interface
-    await expect(page.getByText(/welcome to hub/i)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('heading', { name: /welcome to hub/i })).toBeVisible({ timeout: 10000 })
     
     // Reload page
     await page.reload()
     
     // Should still be in main interface (not join screen)
-    await expect(page.getByText('PersistentUser')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('heading', { name: 'PersistentUser', exact: true })).toBeVisible({ timeout: 10000 })
     await expect(page.getByPlaceholder('Enter your name')).not.toBeVisible()
   })
 

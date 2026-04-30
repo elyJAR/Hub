@@ -39,6 +39,7 @@ export function AvatarPicker({ selected, onSelect }: AvatarPickerProps) {
             <button
               key={avatar.id}
               type="button"
+              data-testid={`avatar-${avatar.id}`}
               onClick={() => onSelect(avatar.id)}
               onMouseEnter={() => setHoveredAvatar(avatar.id)}
               onMouseLeave={() => setHoveredAvatar(undefined)}

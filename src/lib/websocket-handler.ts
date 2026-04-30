@@ -126,20 +126,21 @@ export class WebSocketMessageHandler {
       }
 
       // Create session
-      const session = this.sessionManager.createSession(ws, message.displayName, message.avatar)
+      const session = this.sessionManager.createSession(ws, message.displayName, message.persistentId, message.avatar, message.sessionId)
       this.socketToSession.set(ws, session.sessionId)
-
-      // Generate JWT token
-      const token = this.sessionManager.generateToken(session.sessionId)
-
-      // Send session created confirmation
-      this.sendMessage(ws, {
-        type: 'session-created',
-        sessionId: session.sessionId,
-        token,
-        displayName: session.displayName,
-        avatar: session.avatar,
-      })
+ 
+       // Generate JWT token
+       const token = this.sessionManager.generateToken(session.sessionId)
+ 
+       // Send session created confirmation
+       this.sendMessage(ws, {
+         type: 'session-created',
+         sessionId: session.sessionId,
+         persistentId: session.persistentId,
+         token,
+         displayName: session.displayName,
+         avatar: session.avatar,
+       })
 
       console.log(`User "${session.displayName}" joined with session ${session.sessionId}`)
 
@@ -199,6 +200,9 @@ export class WebSocketMessageHandler {
       case 'webrtc-ice-candidate':
       case 'webrtc-call-declined':
       case 'webrtc-call-ended':
+      case 'webrtc-file-offer':
+      case 'webrtc-file-answer':
+      case 'webrtc-file-ice-candidate':
         this.handleWebRTCSignaling(session, message)
         break
       
@@ -236,6 +240,7 @@ export class WebSocketMessageHandler {
       type: 'incoming-connection-request',
       requestId: requestId,
       fromSessionId: session.sessionId,
+      fromPersistentId: session.persistentId,
       fromDisplayName: session.displayName,
       fromAvatar: session.avatar,
       expiresAt,
@@ -284,6 +289,7 @@ export class WebSocketMessageHandler {
       this.sendMessage(session.socket, {
         type: 'connection-established',
         sessionId: requesterSession.sessionId,
+        persistentId: requesterSession.persistentId,
         displayName: requesterSession.displayName,
         avatar: requesterSession.avatar,
       })
@@ -291,6 +297,7 @@ export class WebSocketMessageHandler {
       this.sendMessage(requesterSession.socket, {
         type: 'connection-established',
         sessionId: session.sessionId,
+        persistentId: session.persistentId,
         displayName: session.displayName,
         avatar: session.avatar,
       })
@@ -326,6 +333,7 @@ export class WebSocketMessageHandler {
       type: 'chat-message-received',
       messageId: message.id,
       fromSessionId: session.sessionId,
+      fromPersistentId: session.persistentId,
       fromDisplayName: session.displayName,
       content: message.content,
       timestamp: message.timestamp,
@@ -458,8 +466,12 @@ export class WebSocketMessageHandler {
 
     if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) return
 
-    // Relay WebRTC signaling message
-    this.sendMessage(targetSession.socket, message)
+    // Relay WebRTC signaling message with sender info
+    this.sendMessage(targetSession.socket, {
+      ...message,
+      sessionId: session.sessionId,
+      fromDisplayName: session.displayName,
+    })
   }
 
   private broadcastPresenceUpdate(): void {

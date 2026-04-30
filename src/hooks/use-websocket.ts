@@ -3,6 +3,7 @@ import { WebSocketMessage, UserSession } from '@/types/messages'
 
 interface SessionData {
   sessionId: string
+  persistentId: string
   token: string
   displayName: string
   avatar?: string
@@ -137,12 +138,19 @@ export function useWebSocket(): WebSocketHook {
             ...prev,
             session: {
               sessionId: message.sessionId,
+              persistentId: message.persistentId,
               token: message.token,
               displayName: message.displayName,
               avatar: message.avatar,
             },
             error: null,
           }))
+
+          // Save persistentId to localStorage if not already there
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('hub-persistent-id', message.persistentId)
+          }
+
           emitEvent('session-created', message)
           break
 
@@ -158,6 +166,16 @@ export function useWebSocket(): WebSocketHook {
             ...prev,
             connections: new Set([...prev.connections, message.sessionId]),
           }))
+          
+          // Add to trusted users if we have a persistentId
+          if (message.persistentId && typeof window !== 'undefined') {
+            const trustedUsersStr = localStorage.getItem('hub-trusted-users')
+            const trustedUsers = trustedUsersStr ? JSON.parse(trustedUsersStr) : []
+            if (!trustedUsers.includes(message.persistentId)) {
+              localStorage.setItem('hub-trusted-users', JSON.stringify([...trustedUsers, message.persistentId]))
+            }
+          }
+          
           emitEvent('connection-established', message)
           break
 
@@ -166,7 +184,23 @@ export function useWebSocket(): WebSocketHook {
           break
 
         case 'incoming-connection-request':
-          emitEvent('incoming-connection-request', message)
+          // Check if this is a trusted user (auto-accept)
+          const trustedUsersStr = typeof window !== 'undefined' ? localStorage.getItem('hub-trusted-users') : null
+          const trustedUsers = trustedUsersStr ? JSON.parse(trustedUsersStr) : []
+
+          if (message.fromPersistentId && trustedUsers.includes(message.fromPersistentId)) {
+            console.log(`Auto-accepting connection request from trusted user: ${message.fromDisplayName}`)
+            // Small delay to ensure state is ready
+            setTimeout(() => {
+              sendMessage({
+                type: 'connection-response',
+                requestId: message.requestId,
+                accepted: true,
+              } as any)
+            }, 500)
+          } else {
+            emitEvent('incoming-connection-request', message)
+          }
           break
 
         case 'chat-message-received':
@@ -226,6 +260,9 @@ export function useWebSocket(): WebSocketHook {
         case 'webrtc-ice-candidate':
         case 'webrtc-call-declined':
         case 'webrtc-call-ended':
+        case 'webrtc-file-offer':
+        case 'webrtc-file-answer':
+        case 'webrtc-file-ice-candidate':
           emitEvent('webrtc-signaling', message)
           break
 
@@ -301,6 +338,7 @@ export function useWebSocket(): WebSocketHook {
             displayName: savedSession.displayName,
             avatar: savedSession.avatar,
             sessionId: savedSession.sessionId,
+            persistentId: savedSession.persistentId,
           }
           ws.send(JSON.stringify(joinMessage))
         } else if (reconnectToken) {
@@ -379,10 +417,12 @@ export function useWebSocket(): WebSocketHook {
       }
 
       let savedSession = null
+      let persistentId = null
       if (typeof window !== 'undefined') {
         try {
           const saved = localStorage.getItem('hub-session')
           if (saved) savedSession = JSON.parse(saved)
+          persistentId = localStorage.getItem('hub-persistent-id')
         } catch (e) {}
       }
 
@@ -391,6 +431,7 @@ export function useWebSocket(): WebSocketHook {
         displayName,
         avatar,
         sessionId: savedSession?.sessionId,
+        persistentId: persistentId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       }
 
       // Listen for session creation or error

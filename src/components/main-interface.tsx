@@ -13,6 +13,7 @@ import { Menu, Users, Bell, Settings, Inbox } from 'lucide-react'
 
 interface SessionData {
   sessionId: string
+  persistentId: string
   token: string
   displayName: string
   avatar?: string
@@ -24,7 +25,7 @@ interface MainInterfaceProps {
 }
 
 export function MainInterface({ session, isConnected }: MainInterfaceProps) {
-  const [selectedUserId, setSelectedUserId] = useState<string>()
+  const [selectedUserPersistentId, setSelectedUserPersistentId] = useState<string>()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -78,11 +79,11 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
   useEffect(() => {
     const cleanup = addEventListener('chat-message-received', (data: any) => {
       // If we are currently chatting with this user, ChatInterface handles it
-      if (data.fromSessionId === selectedUserId) return;
+      if (data.fromPersistentId === selectedUserPersistentId) return;
       
       // Otherwise, save to localStorage
       if (typeof window !== 'undefined' && session) {
-        const key = `hub-chat-${session.sessionId}-${data.fromSessionId}`
+        const key = `hub-chat-${session.persistentId}-${data.fromPersistentId}`
         try {
           const saved = localStorage.getItem(key)
           const messages = saved ? JSON.parse(saved) : []
@@ -93,6 +94,7 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
               id: data.messageId,
               content: data.content,
               fromSessionId: data.fromSessionId,
+              fromPersistentId: data.fromPersistentId,
               fromDisplayName: data.fromDisplayName,
               timestamp: data.timestamp,
               status: 'delivered'
@@ -106,7 +108,7 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
     })
     
     return cleanup
-  }, [addEventListener, selectedUserId, session])
+  }, [addEventListener, selectedUserPersistentId, session])
 
   return (
     <div className="h-screen bg-background flex overflow-hidden">
@@ -130,14 +132,13 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
       `}>
         <UserList
           currentSession={session}
-          selectedUserId={selectedUserId}
-          onSelectUser={(userId) => {
-            setSelectedUserId(userId)
+          selectedUserPersistentId={selectedUserPersistentId}
+          onSelectUser={(persistentId) => {
+            setSelectedUserPersistentId(persistentId)
             if (window.innerWidth < 1024) {
               setIsSidebarOpen(false)
             }
           }}
-          onStartCall={startCall}
           isConnected={isConnected}
         />
       </div>
@@ -206,11 +207,12 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
 
         {/* Chat Area */}
         <div className="flex-1 overflow-hidden">
-          {selectedUserId ? (
+          {selectedUserPersistentId ? (
             <ChatInterface
               currentSession={session}
-              targetUserId={selectedUserId}
-              targetUser={users.find(u => u.sessionId === selectedUserId)}
+              targetUserId={users.find(u => u.persistentId === selectedUserPersistentId)?.sessionId || ''}
+              targetPersistentId={selectedUserPersistentId}
+              targetUser={users.find(u => u.persistentId === selectedUserPersistentId) as any}
               isConnected={isConnected}
               onStartCall={startCall}
             />

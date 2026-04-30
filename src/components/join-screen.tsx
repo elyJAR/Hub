@@ -127,7 +127,10 @@ export function JoinScreen({ onJoin, isConnecting, error }: JoinScreenProps) {
 
             {/* Error Message */}
             {currentError && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3">
+              <div 
+                data-testid="join-error"
+                className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3"
+              >
                 <div className="flex">
                   <AlertTriangle className="w-5 h-5 text-red-400 mr-2 flex-shrink-0" />
                   <p className="text-sm text-red-700 dark:text-red-400">
@@ -152,9 +155,9 @@ export function JoinScreen({ onJoin, isConnecting, error }: JoinScreenProps) {
             {/* Join Button */}
             <button
               type="submit"
-              disabled={isLoading || !displayName.trim()}
+              disabled={isLoading}
               className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary ${
-                isLoading || !displayName.trim()
+                isLoading
                   ? 'bg-gray-400 cursor-not-allowed'
                   : 'bg-primary hover:bg-primary-600 focus:bg-primary-700'
               }`}
