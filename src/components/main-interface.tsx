@@ -3,13 +3,16 @@
 import { useState, useEffect } from 'react'
 import { UserList } from './user-list'
 import { ChatInterface } from './chat-interface'
+import { GroupChatInterface } from './group-chat-interface'
 import { ConnectionRequestModal, ConnectionRequestToast } from './connection-request-modal'
 import { SettingsModal } from './settings-modal'
 import { CallInterface } from './call-interface'
 import { useConnectionRequests } from '@/hooks/use-connection-requests'
 import { useWebRTC } from '@/hooks/use-webrtc'
 import { useWebSocketContext } from '@/contexts/websocket-context'
-import { Menu, Users, Bell, Settings, Inbox } from 'lucide-react'
+import { Menu, Users, Bell, Settings, Inbox, X } from 'lucide-react'
+import { notificationManager } from '@/lib/notifications'
+import { toast } from '@/lib/toast'
 
 interface SessionData {
   sessionId: string
@@ -26,9 +29,25 @@ interface MainInterfaceProps {
 
 export function MainInterface({ session, isConnected }: MainInterfaceProps) {
   const [selectedUserPersistentId, setSelectedUserPersistentId] = useState<string>()
+  const [selectedGroupId, setSelectedGroupId] = useState<string>()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+
+  // Handle responsive sidebar behavior
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) { // 'lg' breakpoint
+        setIsSidebarOpen(true)
+      }
+    }
+
+    window.addEventListener('resize', handleResize)
+    // Initial check
+    handleResize()
+    
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   // WebRTC hook for voice calls
   const {
@@ -43,13 +62,33 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
     declineCall,
     endCall,
     toggleMute,
+    connectionQuality,
   } = useWebRTC()
 
-  // Auto-close sidebar on mobile devices initially
+  // Auto-close sidebar on mobile devices and handle responsiveness
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+    if (typeof window === 'undefined') return
+
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setIsSidebarOpen(true)
+      } else {
+        // Only auto-close if we're switching TO mobile
+        // This prevents the sidebar from reopening when resizing within mobile range
+      }
+    }
+
+    // Initial check
+    if (window.innerWidth < 1024) {
       setIsSidebarOpen(false)
     }
+
+    window.addEventListener('resize', handleResize)
+    
+    // Request notification permission
+    notificationManager.requestPermission()
+
+    return () => window.removeEventListener('resize', handleResize)
   }, [])
   
   const {
@@ -73,22 +112,27 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
     }
   }
 
-  const { addEventListener, users } = useWebSocketContext()
+  const { addEventListener, users, groups } = useWebSocketContext()
 
-  // Background listener for incoming messages when chat is not open
+  // Background listener for incoming messages and calls
   useEffect(() => {
-    const cleanup = addEventListener('chat-message-received', (data: any) => {
+    const cleanupMsg = addEventListener('chat-message-received', (data: any) => {
       // If we are currently chatting with this user, ChatInterface handles it
       if (data.fromPersistentId === selectedUserPersistentId) return;
       
-      // Otherwise, save to localStorage
+      // Notify user
+      notificationManager.notify(`New message from ${data.fromDisplayName}`, {
+        body: data.content
+      })
+      toast.info(`New message from ${data.fromDisplayName}`)
+
+      // Save to localStorage
       if (typeof window !== 'undefined' && session) {
         const key = `hub-chat-${session.persistentId}-${data.fromPersistentId}`
         try {
           const saved = localStorage.getItem(key)
           const messages = saved ? JSON.parse(saved) : []
           
-          // Check if message already exists to prevent duplicates
           if (!messages.some((m: any) => m.id === data.messageId)) {
             messages.push({
               id: data.messageId,
@@ -106,8 +150,21 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
         }
       }
     })
+
+    const cleanupCall = addEventListener('webrtc-signaling', (data: any) => {
+      if (data.type === 'webrtc-offer') {
+        notificationManager.notify(`Incoming call from ${data.fromDisplayName}`, {
+          body: 'Click to answer',
+          tag: 'incoming-call',
+          requireInteraction: true
+        })
+      }
+    })
     
-    return cleanup
+    return () => {
+      cleanupMsg()
+      cleanupCall()
+    }
   }, [addEventListener, selectedUserPersistentId, session])
 
   return (
@@ -133,8 +190,17 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
         <UserList
           currentSession={session}
           selectedUserPersistentId={selectedUserPersistentId}
+          selectedGroupId={selectedGroupId}
           onSelectUser={(persistentId) => {
             setSelectedUserPersistentId(persistentId)
+            setSelectedGroupId(undefined)
+            if (window.innerWidth < 1024) {
+              setIsSidebarOpen(false)
+            }
+          }}
+          onSelectGroup={(groupId) => {
+            setSelectedGroupId(groupId)
+            setSelectedUserPersistentId(undefined)
             if (window.innerWidth < 1024) {
               setIsSidebarOpen(false)
             }
@@ -207,7 +273,15 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
 
         {/* Chat Area */}
         <div className="flex-1 overflow-hidden">
-          {selectedUserPersistentId ? (
+          {selectedGroupId ? (
+            <GroupChatInterface
+              currentSession={session}
+              groupId={selectedGroupId}
+              groupName={groups.find(g => g.id === selectedGroupId)?.name || 'Group Chat'}
+              members={groups.find(g => g.id === selectedGroupId)?.members || []}
+              onLeave={() => setSelectedGroupId(undefined)}
+            />
+          ) : selectedUserPersistentId ? (
             <ChatInterface
               currentSession={session}
               targetUserId={users.find(u => u.persistentId === selectedUserPersistentId)?.sessionId || ''}
@@ -226,13 +300,13 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
                   Welcome to Hub, {session.displayName}!
                 </h3>
                 <p className="text-muted-foreground mb-4">
-                  Select a user from the sidebar to start a conversation, or send a connection request to someone new.
+                  Select a user or group from the sidebar to start a conversation, or create a new group.
                 </p>
                 <button
                   onClick={() => setIsSidebarOpen(true)}
                   className="lg:hidden bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors"
                 >
-                  View Users
+                  View Sidebar
                 </button>
               </div>
             </div>
@@ -281,8 +355,12 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
           onDecline={declineCall}
           onEnd={endCall}
           onToggleMute={toggleMute}
+          connectionQuality={connectionQuality}
         />
       )}
+
+      {/* Hidden audio element for remote stream */}
+      <audio id="remote-audio" autoPlay />
     </div>
   )
 }

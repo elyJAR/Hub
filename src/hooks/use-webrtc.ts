@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useWebSocketContext } from '@/contexts/websocket-context'
+import { soundManager } from '@/lib/sound-manager'
 import { toast } from '@/lib/toast'
 
 interface WebRTCState {
@@ -10,6 +11,7 @@ interface WebRTCState {
   callError: string | null
   remoteUserId: string | null
   remoteUserName: string | null
+  connectionQuality: 'good' | 'fair' | 'poor'
 }
 
 interface UseWebRTCReturn extends WebRTCState {
@@ -37,12 +39,14 @@ export function useWebRTC(): UseWebRTCReturn {
     callError: null,
     remoteUserId: null,
     remoteUserName: null,
+    connectionQuality: 'good',
   })
 
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
   const remoteStreamRef = useRef<MediaStream | null>(null)
   const callTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const qualityTimerRef = useRef<NodeJS.Timeout | null>(null)
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([])
 
   // Cleanup function
@@ -54,15 +58,22 @@ export function useWebRTC(): UseWebRTCReturn {
     }
 
     // Close peer connection
+    // Stop all sounds
+    soundManager.stopAll()
+
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close()
       peerConnectionRef.current = null
     }
 
-    // Clear timer
+    // Clear timers
     if (callTimerRef.current) {
       clearInterval(callTimerRef.current)
       callTimerRef.current = null
+    }
+    if (qualityTimerRef.current) {
+      clearInterval(qualityTimerRef.current)
+      qualityTimerRef.current = null
     }
 
     // Clear pending candidates
@@ -136,27 +147,72 @@ export function useWebRTC(): UseWebRTCReturn {
     return pc
   }, [sendMessage, cleanup])
 
+  const monitorConnectionQuality = useCallback(async () => {
+    const pc = peerConnectionRef.current
+    if (!pc) return
+
+    try {
+      const stats = await pc.getStats()
+      let totalPacketsLost = 0
+      let totalPacketsReceived = 0
+
+      stats.forEach(report => {
+        if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+          totalPacketsLost = report.packetsLost || 0
+          totalPacketsReceived = report.packetsReceived || 0
+        }
+      })
+
+      if (totalPacketsReceived > 0) {
+        const lossRate = totalPacketsLost / (totalPacketsLost + totalPacketsReceived)
+        if (lossRate > 0.1) {
+          setState(prev => ({ ...prev, connectionQuality: 'poor' }))
+        } else if (lossRate > 0.02) {
+          setState(prev => ({ ...prev, connectionQuality: 'fair' }))
+        } else {
+          setState(prev => ({ ...prev, connectionQuality: 'good' }))
+        }
+      }
+    } catch (e) {
+      console.error('Failed to monitor connection quality', e)
+    }
+  }, [])
+
   // Start outgoing call
   const startCall = useCallback(async (targetUserId: string) => {
+    console.log('[useWebRTC] startCall initiated for target:', targetUserId)
+    if (!targetUserId) {
+      console.error('[useWebRTC] startCall failed: No targetUserId provided')
+      toast.error('Cannot start call: Invalid target user')
+      return
+    }
+
     try {
       setState(prev => ({ ...prev, callError: null }))
 
+      console.log('[useWebRTC] Requesting microphone permission...')
       // Request microphone permission
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      console.log('[useWebRTC] Microphone permission granted, stream acquired')
       localStreamRef.current = stream
 
       // Initialize peer connection
+      console.log('[useWebRTC] Initializing PeerConnection...')
       const pc = initializePeerConnection(targetUserId)
 
       // Add local stream tracks
+      console.log('[useWebRTC] Adding local tracks to PeerConnection...')
       stream.getTracks().forEach(track => {
         pc.addTrack(track, stream)
       })
 
       // Create and send offer
+      console.log('[useWebRTC] Creating SDP offer...')
       const offer = await pc.createOffer()
+      console.log('[useWebRTC] Setting local description...')
       await pc.setLocalDescription(offer)
 
+      console.log('[useWebRTC] Sending webrtc-offer signaling message...')
       sendMessage({
         type: 'webrtc-offer',
         targetSessionId: targetUserId,
@@ -171,6 +227,9 @@ export function useWebRTC(): UseWebRTCReturn {
 
       toast.info('Calling...')
 
+      // Play outgoing ring
+      soundManager.play('outgoingCall', true)
+
       // Start call timer
       callTimerRef.current = setInterval(() => {
         setState(prev => ({
@@ -179,8 +238,11 @@ export function useWebRTC(): UseWebRTCReturn {
         }))
       }, 1000)
 
+      // Start quality monitoring
+      qualityTimerRef.current = setInterval(monitorConnectionQuality, 5000)
+
     } catch (error) {
-      console.error('Error starting call:', error)
+      console.error('[useWebRTC] Error starting call:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to start call'
       setState(prev => ({
         ...prev,
@@ -193,15 +255,21 @@ export function useWebRTC(): UseWebRTCReturn {
 
   // Accept incoming call
   const acceptCall = useCallback(async () => {
+    console.log('[useWebRTC] acceptCall initiated')
     try {
       if (!state.remoteUserId) {
         throw new Error('No incoming call')
       }
 
       setState(prev => ({ ...prev, callError: null, isCallIncoming: false }))
+      
+      // Stop ringing
+      soundManager.stopAll()
 
+      console.log('[useWebRTC] Requesting microphone permission for acceptance...')
       // Request microphone permission
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      console.log('[useWebRTC] Microphone permission granted')
       localStreamRef.current = stream
 
       // Peer connection should already be initialized from the offer
@@ -210,15 +278,19 @@ export function useWebRTC(): UseWebRTCReturn {
         throw new Error('Peer connection not initialized')
       }
 
+      console.log('[useWebRTC] Adding local tracks to PeerConnection...')
       // Add local stream tracks
       stream.getTracks().forEach(track => {
         pc.addTrack(track, stream)
       })
 
+      console.log('[useWebRTC] Creating SDP answer...')
       // Create and send answer
       const answer = await pc.createAnswer()
+      console.log('[useWebRTC] Setting local description...')
       await pc.setLocalDescription(answer)
 
+      console.log('[useWebRTC] Sending webrtc-answer signaling message...')
       sendMessage({
         type: 'webrtc-answer',
         targetSessionId: state.remoteUserId,
@@ -240,6 +312,10 @@ export function useWebRTC(): UseWebRTCReturn {
         }))
       }, 1000)
 
+      // Start quality monitoring
+      qualityTimerRef.current = setInterval(monitorConnectionQuality, 5000)
+
+      console.log('[useWebRTC] Processing pending ICE candidates:', pendingCandidatesRef.current.length)
       // Add any pending ICE candidates
       for (const candidate of pendingCandidatesRef.current) {
         await pc.addIceCandidate(new RTCIceCandidate(candidate))
@@ -247,7 +323,7 @@ export function useWebRTC(): UseWebRTCReturn {
       pendingCandidatesRef.current = []
 
     } catch (error) {
-      console.error('Error accepting call:', error)
+      console.error('[useWebRTC] Error accepting call:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to accept call'
       setState(prev => ({
         ...prev,
@@ -260,6 +336,8 @@ export function useWebRTC(): UseWebRTCReturn {
 
   // Decline incoming call
   const declineCall = useCallback(() => {
+    console.log('[useWebRTC] declineCall initiated')
+    soundManager.stopAll()
     if (state.remoteUserId) {
       sendMessage({
         type: 'webrtc-call-declined',
@@ -272,6 +350,7 @@ export function useWebRTC(): UseWebRTCReturn {
 
   // End call
   const endCall = useCallback(() => {
+    console.log('[useWebRTC] endCall initiated')
     if (state.remoteUserId) {
       sendMessage({
         type: 'webrtc-call-ended',
@@ -299,30 +378,42 @@ export function useWebRTC(): UseWebRTCReturn {
   // Listen for WebRTC signaling messages
   useEffect(() => {
     const cleanupOffer = addEventListener('webrtc-signaling', async (message) => {
+      console.log('[useWebRTC] Received signaling message:', message.type)
       if (message.type === 'webrtc-offer') {
-        // Incoming call
+        const { offer, sessionId, fromDisplayName } = message
+        console.log('[useWebRTC] Handling incoming offer from:', fromDisplayName)
+        
+        // Play incoming ring
+        soundManager.play('incomingCall', true)
+
         setState(prev => ({
           ...prev,
           isCallIncoming: true,
-          remoteUserId: message.sessionId,
-          remoteUserName: message.fromDisplayName,
+          remoteUserId: sessionId,
+          remoteUserName: fromDisplayName,
         }))
 
-        toast.info(`Incoming call from ${message.fromDisplayName}`)
-
         // Initialize peer connection
-        const pc = initializePeerConnection(message.sessionId)
+        const pc = initializePeerConnection(sessionId)
         
         // Set remote description
-        await pc.setRemoteDescription(new RTCSessionDescription(message.offer))
+        console.log('[useWebRTC] Setting remote description (offer)...')
+        await pc.setRemoteDescription(new RTCSessionDescription(offer))
       }
       
       else if (message.type === 'webrtc-answer') {
-        // Call accepted
+        const { answer } = message
+        console.log('[useWebRTC] Received answer')
+        
+        // Stop outgoing ring
+        soundManager.stop('outgoingCall')
+        
         const pc = peerConnectionRef.current
         if (pc) {
+          console.log('[useWebRTC] Setting remote description (answer)...')
           await pc.setRemoteDescription(new RTCSessionDescription(message.answer))
           
+          console.log('[useWebRTC] Processing pending ICE candidates:', pendingCandidatesRef.current.length)
           // Add any pending ICE candidates
           for (const candidate of pendingCandidatesRef.current) {
             await pc.addIceCandidate(new RTCIceCandidate(candidate))
@@ -335,14 +426,17 @@ export function useWebRTC(): UseWebRTCReturn {
         // ICE candidate received
         const pc = peerConnectionRef.current
         if (pc && pc.remoteDescription) {
+          console.log('[useWebRTC] Adding ICE candidate...')
           await pc.addIceCandidate(new RTCIceCandidate(message.candidate))
         } else {
+          console.log('[useWebRTC] Queuing ICE candidate (waiting for remote description)')
           // Queue candidate if remote description not set yet
           pendingCandidatesRef.current.push(message.candidate)
         }
       }
       
       else if (message.type === 'webrtc-call-declined') {
+        console.log('[useWebRTC] Call was declined by remote user')
         setState(prev => ({
           ...prev,
           callError: 'Call declined',
@@ -352,6 +446,7 @@ export function useWebRTC(): UseWebRTCReturn {
       }
       
       else if (message.type === 'webrtc-call-ended') {
+        console.log('[useWebRTC] Call ended by remote user')
         toast.info('Call ended by other user')
         cleanup()
       }

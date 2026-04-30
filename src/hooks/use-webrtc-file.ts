@@ -23,6 +23,7 @@ export function useWebRTCFileTransfer() {
   const peersRef = useRef<Record<string, RTCPeerConnection>>({})
   const channelsRef = useRef<Record<string, RTCDataChannel>>({})
   const receiveBuffersRef = useRef<Record<string, ArrayBuffer[]>>({})
+  const writableStreamsRef = useRef<Record<string, any>>({})
   const receivedBytesRef = useRef<Record<string, number>>({})
   const expectedSizesRef = useRef<Record<string, number>>({})
   const fileMetaRef = useRef<Record<string, { type: string, name: string }>>({})
@@ -129,28 +130,39 @@ export function useWebRTCFileTransfer() {
 
   // Called by sender after receiver accepts the file transfer request
   const startWebRTCFileTransfer = useCallback(async (targetUserId: string, fileId: string, file: File) => {
+    console.log('[useWebRTCFileTransfer] Starting transfer for file:', file.name, 'to:', targetUserId)
     try {
       const pc = createPeerConnection(targetUserId, fileId)
+      console.log('[useWebRTCFileTransfer] PeerConnection created')
+      
       const channel = pc.createDataChannel(`file-transfer-${fileId}`, {
         ordered: true
       })
+      console.log('[useWebRTCFileTransfer] DataChannel created')
       
       channelsRef.current[fileId] = channel
       
       channel.binaryType = 'arraybuffer'
       channel.onopen = () => {
-        // Send metadata first via data channel, or we already have it from WebSocket request.
-        // Let's just start sending chunks.
+        console.log('[useWebRTCFileTransfer] DataChannel OPENED. Starting to send chunks...')
         sendFileChunks(fileId, file, channel)
       }
 
+      channel.onclose = () => {
+        console.log('[useWebRTCFileTransfer] DataChannel CLOSED')
+      }
+
       channel.onerror = (error) => {
+        console.error('[useWebRTCFileTransfer] DataChannel ERROR:', error)
         updateProgress(fileId, { status: 'error', error: 'Data channel error' })
       }
 
+      console.log('[useWebRTCFileTransfer] Creating offer...')
       const offer = await pc.createOffer()
+      console.log('[useWebRTCFileTransfer] Setting local description...')
       await pc.setLocalDescription(offer)
 
+      console.log('[useWebRTCFileTransfer] Sending webrtc-file-offer...')
       sendMessage({
         type: 'webrtc-file-offer',
         targetSessionId: targetUserId,
@@ -159,6 +171,7 @@ export function useWebRTCFileTransfer() {
       })
 
     } catch (err) {
+      console.error('[useWebRTCFileTransfer] Failed to start transfer:', err)
       updateProgress(fileId, { status: 'error', error: 'Failed to start WebRTC' })
     }
   }, [createPeerConnection, sendMessage, sendFileChunks, updateProgress])
@@ -171,31 +184,45 @@ export function useWebRTCFileTransfer() {
     receivedBytesRef.current[fileId] = 0
     updateProgress(fileId, { status: 'transferring', progress: 0 })
 
-    channel.onmessage = (event) => {
+    channel.onmessage = async (event) => {
       if (typeof event.data === 'string') {
         try {
           const msg = JSON.parse(event.data)
           if (msg.type === 'EOF') {
-            // Reconstruct file
-            const blob = new Blob(receiveBuffersRef.current[fileId], { type: fileMetaRef.current[fileId]?.type || 'application/octet-stream' })
-            
-            // Read as Data URL to maintain existing chat interface compatibility
-            const reader = new FileReader()
-            reader.onload = (e) => {
+            const writable = writableStreamsRef.current[fileId]
+            if (writable) {
+              await writable.close()
+              delete writableStreamsRef.current[fileId]
+              
               updateProgress(fileId, { 
                 status: 'completed', 
                 progress: 100,
-                dataUrl: e.target?.result as string
+                // For writable streams, we don't have a dataUrl easily without re-reading
+                // but the file is already on disk!
               })
-              cleanupTransfer(fileId)
+            } else {
+              // Reconstruct file from buffers
+              const blob = new Blob(receiveBuffersRef.current[fileId], { type: fileMetaRef.current[fileId]?.type || 'application/octet-stream' })
+              const objectUrl = URL.createObjectURL(blob)
+              updateProgress(fileId, { 
+                status: 'completed', 
+                progress: 100,
+                dataUrl: objectUrl
+              })
             }
-            reader.readAsDataURL(blob)
+            cleanupTransfer(fileId)
           }
         } catch (e) {
           // ignore parsing error if it's not JSON
         }
       } else if (event.data instanceof ArrayBuffer) {
-        receiveBuffersRef.current[fileId].push(event.data)
+        const writable = writableStreamsRef.current[fileId]
+        if (writable) {
+          await writable.write(event.data)
+        } else {
+          receiveBuffersRef.current[fileId].push(event.data)
+        }
+        
         receivedBytesRef.current[fileId] += event.data.byteLength
         
         const total = expectedSizesRef.current[fileId]
@@ -216,19 +243,26 @@ export function useWebRTCFileTransfer() {
 
   useEffect(() => {
     const cleanupSignaling = addEventListener('webrtc-signaling', async (message) => {
+      console.log('[useWebRTCFileTransfer] Received signaling message:', message.type, 'for file:', message.fileId)
       if (message.type === 'webrtc-file-offer') {
         const { fileId, offer, sessionId } = message
         try {
+          console.log('[useWebRTCFileTransfer] Handling offer from:', sessionId)
           const pc = createPeerConnection(sessionId, fileId)
           
           pc.ondatachannel = (event) => {
+            console.log('[useWebRTCFileTransfer] DataChannel received via offer')
             setupReceiverChannel(fileId, event.channel)
           }
 
+          console.log('[useWebRTCFileTransfer] Setting remote description (offer)...')
           await pc.setRemoteDescription(new RTCSessionDescription(offer))
+          console.log('[useWebRTCFileTransfer] Creating answer...')
           const answer = await pc.createAnswer()
+          console.log('[useWebRTCFileTransfer] Setting local description (answer)...')
           await pc.setLocalDescription(answer)
 
+          console.log('[useWebRTCFileTransfer] Sending webrtc-file-answer...')
           sendMessage({
             type: 'webrtc-file-answer',
             targetSessionId: sessionId,
@@ -236,13 +270,16 @@ export function useWebRTCFileTransfer() {
             answer,
           })
         } catch (err) {
+          console.error('[useWebRTCFileTransfer] Failed to handle offer:', err)
           updateProgress(fileId, { status: 'error', error: 'Failed to accept offer' })
         }
       } 
       else if (message.type === 'webrtc-file-answer') {
         const { fileId, answer } = message
+        console.log('[useWebRTCFileTransfer] Handling answer for file:', fileId)
         const pc = peersRef.current[fileId]
         if (pc) {
+          console.log('[useWebRTCFileTransfer] Setting remote description (answer)...')
           await pc.setRemoteDescription(new RTCSessionDescription(answer))
         }
       }
@@ -250,6 +287,7 @@ export function useWebRTCFileTransfer() {
         const { fileId, candidate } = message
         const pc = peersRef.current[fileId]
         if (pc && pc.remoteDescription) {
+          console.log('[useWebRTCFileTransfer] Adding ICE candidate...')
           await pc.addIceCandidate(new RTCIceCandidate(candidate))
         }
       }
@@ -258,9 +296,20 @@ export function useWebRTCFileTransfer() {
     return cleanupSignaling
   }, [addEventListener, createPeerConnection, sendMessage, setupReceiverChannel, updateProgress])
 
+  const cancelTransfer = useCallback((fileId: string) => {
+    updateProgress(fileId, { status: 'error', error: 'Cancelled by user' })
+    cleanupTransfer(fileId)
+  }, [updateProgress, cleanupTransfer])
+
+  const setWritableStream = useCallback((fileId: string, stream: any) => {
+    writableStreamsRef.current[fileId] = stream
+  }, [])
+
   return {
     transfers,
     startWebRTCFileTransfer,
     expectIncomingFile,
+    cancelTransfer,
+    setWritableStream,
   }
 }

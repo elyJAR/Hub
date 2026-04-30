@@ -1,7 +1,33 @@
-okay, here is the list
-1. for now when a user comes online, he always need to send connection request to people that already accepted his request before, the system should recognize the people he's friends with without the need to always resend request
+HUB PROJECT - ACTIVE BUG LIST & FEATURE REQUESTS (Last Updated: April 30, 2026)
 
-2. the call button should not be on the side bar but on the main page
-3. the system should not need manual refresh before update comes up, for example sometimes, the message from the other pc does not show up at all unless the server pc sends a message first.
-4. i cannot alwas find the downloaded files after downloading, by default, there should be another folder inside of downloads named "Hub Downloads" where all the downloaded files are stored.
-5. right now, the chat history isnt working, since there is always a kind of reset when i refresh the page.
+CRITICAL COMMUNICATION ISSUES:
+-----------------------------
+1. [Chat Sync] Edited messages are not updating on the recipient's end in real-time.
+   - Observation: When sender edits a message, the UI updates locally but the receiver still sees the old content.
+   - Status: Synchronization logic needs verification for both 1-on-1 and Group chats.
+
+2. [Voice Calling] Calls are currently not working.
+   - Observation: Clicking the call button either does nothing or the connection fails to establish audio.
+   - Status: Signaling path has been permissive, but WebRTC ICE candidate exchange or audio routing may be blocked.
+
+3. [Real-time Updates] Messages sometimes don't show up until a manual refresh or until the other user sends a message.
+   - Observation: Possible WebSocket synchronization or state update lag.
+
+FILE TRANSFER & UX ISSUES:
+--------------------------
+4. [File Transfer Handshake] Transfer stalls after "Accept" is clicked.
+   - Observation: Console shows "File NOT found in globalPendingFiles" on sender side. 
+   - Feature Request: System MUST ask for a download location (Save As) before starting the transfer.
+   - Feature Request: Default folder "Hub Downloads" should be used if picker is skipped.
+
+5. [UI Responsiveness] Sidebar doesn't reappear after switching from Mobile to Desktop mode.
+   - Observation: In mobile view, sidebar is hidden. When resizing the window back to desktop width, the sidebar remains hidden.
+
+6. [Notifications] Lack of desktop notification permissions.
+   - Feature Request: Users should be prompted for permission so they can be notified of messages even when the browser is backgrounded.
+
+7. [Session Persistence] Chat history resets on page refresh.
+   - Status: LocalStorage is being used, but might be inconsistent across session ID changes (need to strictly use PersistentId for storage keys).
+
+8. [Friend System] "Automatic Reconnection"
+   - Requirement: Users shouldn't need to resend connection requests every time they come online if they were already connected before.

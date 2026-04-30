@@ -5,8 +5,21 @@ import { AvatarDisplay } from './avatar-picker'
 import { useWebSocketContext } from '@/contexts/websocket-context'
 import { useWebRTCFileTransfer } from '@/hooks/use-webrtc-file'
 import EmojiPicker from 'emoji-picker-react'
-import { MessageSquare, File, Download, Pencil, Trash2, X, SmilePlus, Paperclip, Send, Check, Phone } from 'lucide-react'
+import { MessageSquare, File, Download, Pencil, Trash2, X, SmilePlus, Paperclip, Send, Check, Phone, CircleSlash, Loader2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
+
+const BANNED_EXTENSIONS = ['.exe', '.bat', '.cmd', '.sh', '.msi', '.scr']
+
+// Global store for files during signaling to survive remounts and HMR
+if (typeof window !== 'undefined' && !(window as any).globalPendingFiles) {
+  (window as any).globalPendingFiles = new Map<string, File>()
+}
+const getGlobalPendingFiles = () => {
+  if (typeof window !== 'undefined') {
+    return (window as any).globalPendingFiles as Map<string, File>
+  }
+  return new Map<string, File>()
+}
 
 interface SessionData {
   sessionId: string
@@ -60,7 +73,13 @@ export function ChatInterface({
   onStartCall
 }: ChatInterfaceProps) {
   const { addEventListener, sendMessage } = useWebSocketContext()
-  const { startWebRTCFileTransfer, expectIncomingFile, transfers } = useWebRTCFileTransfer()
+  const { 
+    transfers, 
+    startWebRTCFileTransfer, 
+    expectIncomingFile, 
+    cancelTransfer,
+    setWritableStream 
+  } = useWebRTCFileTransfer()
   
   const getStorageKey = () => `hub-chat-${currentSession.persistentId}-${targetPersistentId}`
 
@@ -87,7 +106,6 @@ export function ChatInterface({
   const typingTimeoutRef = useRef<NodeJS.Timeout>()
   const emojiPickerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const pendingFilesRef = useRef<Map<string, File>>(new Map())
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -127,12 +145,14 @@ export function ChatInterface({
     })
 
     const cleanup4 = addEventListener('chat-message-edited', (data) => {
-      setMessages(prev => prev.map(msg => 
-        msg.id === data.messageId 
-          ? { ...msg, content: data.newContent, isEdited: true }
-          : msg
-      ))
-      toast.info('Message edited')
+      if (data.fromPersistentId === targetPersistentId) {
+        setMessages(prev => prev.map(msg => 
+          msg.id === data.messageId 
+            ? { ...msg, content: data.newContent, isEdited: true }
+            : msg
+        ))
+        toast.info('Message edited')
+      }
     })
 
     const cleanup5 = addEventListener('chat-message-edited-confirm', (data) => {
@@ -144,12 +164,14 @@ export function ChatInterface({
     })
 
     const cleanup6 = addEventListener('chat-message-deleted', (data) => {
-      setMessages(prev => prev.map(msg => 
-        msg.id === data.messageId 
-          ? { ...msg, isDeleted: true }
-          : msg
-      ))
-      toast.info('Message deleted')
+      if (data.fromPersistentId === targetPersistentId) {
+        setMessages(prev => prev.map(msg => 
+          msg.id === data.messageId 
+            ? { ...msg, isDeleted: true }
+            : msg
+        ))
+        toast.info('Message deleted')
+      }
     })
 
     const cleanup7 = addEventListener('chat-message-deleted-confirm', (data) => {
@@ -161,7 +183,8 @@ export function ChatInterface({
     })
 
     const cleanupFileReq = addEventListener('incoming-file-transfer-request', (data) => {
-      if (data.fromSessionId === targetUserId) {
+      console.log('[ChatInterface] Received incoming-file-transfer-request:', data)
+      if (data.fromSessionId === targetUserId || data.fromPersistentId === targetPersistentId) {
         setMessages(prev => [...prev, {
           id: data.requestId,
           fromSessionId: data.fromSessionId,
@@ -183,17 +206,27 @@ export function ChatInterface({
     })
 
     const cleanupFileRes = addEventListener('file-transfer-response', async (data) => {
-      if (data.fromSessionId === targetUserId && data.accepted) {
-        // Trigger WebRTC transfer if we have the file
-        const file = pendingFilesRef.current.get(data.requestId)
+      console.log('[ChatInterface] Received file-transfer-response:', data)
+      // Check both sessionId and persistentId for robustness
+      if ((data.fromSessionId === targetUserId || data.fromPersistentId === targetPersistentId) && data.accepted) {
+        console.log('[ChatInterface] Transfer accepted by receiver. Looking for file in globalPendingFiles...')
+        const file = getGlobalPendingFiles().get(data.requestId)
         if (file) {
+          console.log('[ChatInterface] File found. Starting WebRTC transfer...')
           startWebRTCFileTransfer(targetUserId, data.requestId, file)
-          pendingFilesRef.current.delete(data.requestId)
+          
+          // Create local URL for the sender to be able to "Open" it too
+          const localUrl = URL.createObjectURL(file)
+          setMessages(prev => prev.map(msg => 
+            msg.id === data.requestId 
+              ? { ...msg, fileData: { ...msg.fileData!, dataUrl: localUrl, transferStatus: 'accepted' } }
+              : msg
+          ))
+          
+          getGlobalPendingFiles().delete(data.requestId)
+        } else {
+          console.error('[ChatInterface] File NOT found in globalPendingFiles for requestId:', data.requestId)
         }
-        
-        setMessages(prev => prev.map(msg => 
-          msg.id === data.requestId ? { ...msg, fileData: { ...msg.fileData!, transferStatus: 'accepted' } } : msg
-        ))
       }
     })
 
@@ -214,7 +247,7 @@ export function ChatInterface({
       cleanupFileReq()
       cleanupFileRes()
     }
-  }, [addEventListener, targetUserId, sendMessage, startWebRTCFileTransfer])
+  }, [addEventListener, targetUserId, targetPersistentId, sendMessage, startWebRTCFileTransfer])
 
   // Close emoji picker when clicking outside
   useEffect(() => {
@@ -328,8 +361,16 @@ export function ChatInterface({
     const file = e.target.files?.[0]
     if (!file || !isConnected) return
 
+    // 2. Type Validation (Security)
+    const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase()
+    if (BANNED_EXTENSIONS.includes(fileExtension)) {
+      toast.error(`File type not allowed for security reasons (${fileExtension})`)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
     const fileId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    pendingFilesRef.current.set(fileId, file)
+    getGlobalPendingFiles().set(fileId, file)
 
     // Send request
     sendMessage({
@@ -361,24 +402,66 @@ export function ChatInterface({
     
     setMessages(prev => [...prev, newMessage])
     toast.info('File transfer request sent')
-    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const handleFileResponse = (fileId: string, accepted: boolean) => {
-    const msg = messages.find(m => m.id === fileId)
-    if (accepted && msg && msg.fileData) {
-      expectIncomingFile(fileId, msg.fileData.fileSize, msg.fileData.fileType, msg.fileData.fileName)
+  const handleFileResponse = async (messageId: string, accepted: boolean) => {
+    console.log('[ChatInterface] handleFileResponse called:', { messageId, accepted })
+    const message = messages.find(m => m.id === messageId)
+    if (!message || !message.fileData) {
+      console.error('[ChatInterface] handleFileResponse: Message or fileData not found', messageId)
+      return
     }
 
+    if (accepted) {
+      try {
+        console.log('[ChatInterface] Receiver accepted file. Checking for showSaveFilePicker...')
+        // Try to use File System Access API for "Specify location"
+        if ('showSaveFilePicker' in window) {
+          console.log('[ChatInterface] showSaveFilePicker is available. Opening picker...')
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: message.fileData.fileName,
+            types: [{
+              description: 'File',
+              accept: { [message.fileData.fileType || 'application/octet-stream']: ['.' + message.fileData.fileName.split('.').pop()] },
+            }],
+          })
+          
+          console.log('[ChatInterface] File handle acquired. Creating writable...')
+          // Create a writable stream to the file
+          const writable = await handle.createWritable()
+          setWritableStream(message.fileData.fileId, writable)
+          
+          toast.success('Location selected. Transfer starting...')
+        } else {
+          console.log('[ChatInterface] showSaveFilePicker NOT available. Using Blob fallback.')
+          toast.info('Direct-to-disk not supported in this browser. Using standard download.')
+        }
+      } catch (err) {
+        // User cancelled picker or not supported, continue with default
+        console.log('[ChatInterface] File picker skipped or failed:', err)
+        toast.info('Using default download location.')
+      }
+
+      console.log('[ChatInterface] Calling expectIncomingFile...')
+      expectIncomingFile(
+        message.fileData.fileId,
+        message.fileData.fileSize,
+        message.fileData.fileType,
+        message.fileData.fileName
+      )
+    }
+
+    console.log('[ChatInterface] Sending file-transfer-response via WebSocket...')
     sendMessage({
       type: 'file-transfer-response',
       targetSessionId: targetUserId,
-      requestId: fileId,
-      accepted
+      requestId: messageId,
+      accepted,
+      fromPersistentId: currentSession.persistentId
     })
 
     setMessages(prev => prev.map(msg => 
-      msg.id === fileId 
+      msg.id === messageId 
         ? { ...msg, fileData: { ...msg.fileData!, transferStatus: accepted ? 'accepted' : 'declined' } }
         : msg
     ))
@@ -443,7 +526,10 @@ export function ChatInterface({
         
         {onStartCall && targetUser?.status !== 'in-call' && (
           <button
-            onClick={() => onStartCall(targetUserId)}
+            onClick={() => {
+              console.log('[ChatInterface] Call button clicked for targetUserId:', targetUserId)
+              onStartCall(targetUserId)
+            }}
             className="flex items-center space-x-2 text-sm bg-green-500 text-white py-2 px-4 rounded-md hover:bg-green-600 transition-colors"
             title="Start voice call"
           >
@@ -499,55 +585,115 @@ export function ChatInterface({
                       </div>
                       
                       {!isCurrentUser && message.fileData.transferStatus === 'pending' && (
-                        <div className="flex space-x-2 mt-2">
-                          <button 
-                            onClick={() => handleFileResponse(message.id, true)} 
-                            className="flex-1 text-xs py-1 px-2 bg-green-500 text-white rounded hover:bg-green-600 transition"
-                          >
-                            Accept
-                          </button>
-                          <button 
-                            onClick={() => handleFileResponse(message.id, false)} 
-                            className="flex-1 text-xs py-1 px-2 bg-red-500 text-white rounded hover:bg-red-600 transition"
-                          >
-                            Decline
-                          </button>
+                        <div className="flex flex-col space-y-2 mt-2">
+                          <p className="text-[10px] text-center font-medium opacity-70">Incoming file request</p>
+                          <div className="flex space-x-2">
+                            <button 
+                              onClick={() => handleFileResponse(message.id, true)} 
+                              className="flex-1 text-xs py-1.5 px-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all shadow-sm font-medium flex items-center justify-center space-x-1"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Accept</span>
+                            </button>
+                            <button 
+                              onClick={() => handleFileResponse(message.id, false)} 
+                              className="flex-1 text-xs py-1.5 px-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all shadow-sm font-medium flex items-center justify-center space-x-1"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              <span>Decline</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {isCurrentUser && message.fileData.transferStatus === 'pending' && (
+                        <div className="mt-2 p-2 bg-white/5 rounded-lg border border-white/10 flex items-center justify-center space-x-2">
+                          <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
+                          <span className="text-[10px] font-medium text-blue-400">Waiting for receiver to accept...</span>
+                        </div>
+                      )}
+                      
+                      {message.fileData.transferStatus === 'accepted' && !transfer && (
+                        <div className="mt-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center justify-center space-x-2">
+                          <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
+                          <span className="text-[10px] font-medium text-blue-400">Initializing P2P Connection...</span>
                         </div>
                       )}
                       
                       {message.fileData.transferStatus === 'declined' && (
-                        <p className="text-xs text-red-400 italic">Transfer declined</p>
+                        <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center space-x-2 text-red-400">
+                          <X className="w-3.5 h-3.5" />
+                          <p className="text-[10px] italic">Transfer declined</p>
+                        </div>
                       )}
 
                       {transfer && transfer.status === 'transferring' && (
-                        <div className="w-full bg-black/20 rounded-full h-1.5 mt-2 overflow-hidden">
-                          <div 
-                            className="bg-blue-400 h-1.5 rounded-full transition-all duration-300" 
-                            style={{ width: `${transfer.progress}%` }}
-                          />
+                        <div className="mt-3 p-3 bg-black/10 rounded-xl border border-white/10 space-y-2">
+                          <div className="flex items-center justify-between text-[10px] text-muted-foreground font-medium px-1">
+                            <span>Transferring...</span>
+                            <span>{transfer.progress}%</span>
+                          </div>
+                          <div className="w-full bg-black/20 rounded-full h-2 overflow-hidden shadow-inner">
+                            <div 
+                              className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full transition-all duration-300 shadow-[0_0_8px_rgba(59,130,246,0.5)]" 
+                              style={{ width: `${transfer.progress}%` }}
+                            />
+                          </div>
+                          <button
+                            onClick={() => cancelTransfer(message.id)}
+                            className="flex items-center justify-center space-x-1 w-full text-[10px] py-1.5 bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded-lg transition-colors border border-red-500/20"
+                          >
+                            <X className="w-3 h-3" />
+                            <span>Cancel</span>
+                          </button>
                         </div>
                       )}
 
                       {transfer && transfer.status === 'error' && (
-                        <p className="text-xs text-red-500 italic mt-1">{transfer.error}</p>
+                        <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center space-x-2 text-red-400">
+                          <CircleSlash className="w-3.5 h-3.5" />
+                          <p className="text-[10px] italic">{transfer.error}</p>
+                        </div>
                       )}
 
                       {(message.fileData.dataUrl || transfer?.dataUrl) && (
-                        <a 
-                          href={message.fileData.dataUrl || transfer?.dataUrl} 
-                          download={`Hub_Downloads_${message.fileData?.fileName}`} 
-                          className={`mt-2 text-xs text-center py-1.5 px-2 rounded transition-colors flex items-center justify-center space-x-1 ${
-                            isCurrentUser 
-                              ? 'bg-primary-foreground/20 hover:bg-primary-foreground/30 text-primary-foreground' 
-                              : 'bg-primary text-primary-foreground hover:bg-primary/90'
-                          }`}
-                          onClick={() => {
-                            toast.success(`Downloading to your Downloads folder as Hub_Downloads_${message.fileData?.fileName}`)
-                          }}
-                        >
-                          <Download className="w-3 h-3" />
-                          <span>Download File</span>
-                        </a>
+                        <div className="mt-3 flex flex-col space-y-2">
+                          <div className="flex items-center space-x-2 p-2 bg-green-500/10 border border-green-500/20 rounded-xl">
+                            <div className="bg-green-500/20 p-1.5 rounded-lg">
+                              <Check className="w-4 h-4 text-green-400" />
+                            </div>
+                            <span className="text-[10px] font-medium text-green-400 uppercase tracking-wider">Transfer Complete</span>
+                          </div>
+                          
+                          <div className="flex space-x-2">
+                            <a 
+                              href={message.fileData.dataUrl || transfer?.dataUrl} 
+                              download={message.fileData?.fileName} 
+                              className={`flex-1 text-[11px] font-bold text-center py-2.5 px-3 rounded-xl transition-all flex items-center justify-center space-x-1.5 shadow-lg active:scale-95 ${
+                                isCurrentUser 
+                                  ? 'bg-primary-foreground text-primary hover:bg-primary-foreground/90' 
+                                  : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                              }`}
+                              onClick={() => {
+                                toast.success('Saving file to your computer...')
+                              }}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Save File</span>
+                            </a>
+                            
+                            <button 
+                              onClick={() => {
+                                const url = message.fileData?.dataUrl || transfer?.dataUrl;
+                                if (url) window.open(url, '_blank');
+                              }}
+                              className={`px-4 text-[11px] font-bold rounded-xl transition-all flex items-center justify-center shadow-lg active:scale-95 bg-background/50 border hover:bg-background/80`}
+                              title="Open/Preview File"
+                            >
+                              Open
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   ) : (

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Phone, PhoneOff, Mic, MicOff, User } from 'lucide-react'
+import { Phone, PhoneOff, Mic, MicOff, User, Wifi } from 'lucide-react'
 import { AvatarDisplay } from './avatar-picker'
 
 interface CallInterfaceProps {
@@ -14,6 +14,7 @@ interface CallInterfaceProps {
   onDecline?: () => void
   onEnd?: () => void
   onToggleMute?: () => void
+  connectionQuality: 'good' | 'fair' | 'poor'
 }
 
 export function CallInterface({
@@ -26,6 +27,7 @@ export function CallInterface({
   onDecline,
   onEnd,
   onToggleMute,
+  connectionQuality,
 }: CallInterfaceProps) {
   const [displayDuration, setDisplayDuration] = useState('00:00')
 
@@ -140,14 +142,22 @@ export function CallInterface({
         </div>
 
         {/* Status indicators */}
-        <div className="mt-8 text-sm text-white/50">
-          <p>Voice call in progress</p>
-          {isMuted && <p className="text-red-400 mt-1">Microphone muted</p>}
+        <div className="mt-8 flex flex-col items-center space-y-2 text-sm">
+          <div className="flex items-center space-x-2">
+            <div className={`w-2 h-2 rounded-full ${
+              connectionQuality === 'good' ? 'bg-green-400' :
+              connectionQuality === 'fair' ? 'bg-yellow-400' : 'bg-red-400'
+            }`} />
+            <span className="text-white/70 capitalize">{connectionQuality} Connection</span>
+            <Wifi className={`w-4 h-4 ${
+              connectionQuality === 'good' ? 'text-green-400' :
+              connectionQuality === 'fair' ? 'text-yellow-400' : 'text-red-400'
+            }`} />
+          </div>
+          <p className="text-white/50 text-xs">Voice call in progress</p>
+          {isMuted && <p className="text-red-400 font-medium">Microphone muted</p>}
         </div>
       </div>
-
-      {/* Hidden audio element for remote stream */}
-      <audio id="remote-audio" autoPlay />
     </div>
   )
 }

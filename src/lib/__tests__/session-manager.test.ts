@@ -190,4 +190,61 @@ describe('SessionManager', () => {
       expect(retrieved).toBeDefined()
     })
   })
+
+  describe('Group Management', () => {
+    let session1Id: string
+    let session2Id: string
+
+    beforeEach(() => {
+      session1Id = sessionManager.createSession(mockSocket, 'User1', 'pid-1').sessionId
+      session2Id = sessionManager.createSession(mockSocket, 'User2', 'pid-2').sessionId
+    })
+
+    it('should create a group and add creator as member', () => {
+      const group = sessionManager.createGroup('Test Group', session1Id)
+      
+      expect(group.name).toBe('Test Group')
+      expect(group.creatorId).toBe(session1Id)
+      expect(group.members.has(session1Id)).toBe(true)
+      expect(group.members.size).toBe(1)
+    })
+
+    it('should allow joining a group', () => {
+      const group = sessionManager.createGroup('Test Group', session1Id)
+      const success = sessionManager.joinGroup(group.id, session2Id)
+      
+      expect(success).toBe(true)
+      expect(group.members.has(session2Id)).toBe(true)
+      expect(group.members.size).toBe(2)
+    })
+
+    it('should allow leaving a group', () => {
+      const group = sessionManager.createGroup('Test Group', session1Id)
+      sessionManager.joinGroup(group.id, session2Id)
+      
+      sessionManager.leaveGroup(group.id, session2Id)
+      
+      expect(group.members.has(session2Id)).toBe(false)
+      expect(group.members.size).toBe(1)
+    })
+
+    it('should delete group when last member leaves', () => {
+      const group = sessionManager.createGroup('Test Group', session1Id)
+      sessionManager.leaveGroup(group.id, session1Id)
+      
+      const retrieved = sessionManager.getGroup(group.id)
+      expect(retrieved).toBeUndefined()
+    })
+
+    it('should retrieve groups for a session', () => {
+      const group1 = sessionManager.createGroup('Group 1', session1Id)
+      const group2 = sessionManager.createGroup('Group 2', session2Id)
+      sessionManager.joinGroup(group2.id, session1Id)
+      
+      const session1Groups = sessionManager.getGroupsForSession(session1Id)
+      expect(session1Groups).toHaveLength(2)
+      expect(session1Groups.map(g => g.id)).toContain(group1.id)
+      expect(session1Groups.map(g => g.id)).toContain(group2.id)
+    })
+  })
 })

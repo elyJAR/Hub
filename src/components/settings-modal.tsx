@@ -19,7 +19,7 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({ isOpen, onClose, session }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications' | 'privacy'>('profile')
   
   // Profile State
   const [displayName, setDisplayName] = useState(session.displayName)
@@ -44,8 +44,30 @@ export function SettingsModal({ isOpen, onClose, session }: SettingsModalProps) 
 
       const savedDesktop = localStorage.getItem('hub-desktop-notifications')
       if (savedDesktop !== null) setDesktopEnabled(savedDesktop === 'true')
+
+      // Load trusted users
+      const savedTrusted = localStorage.getItem('hub-trusted-users-metadata')
+      if (savedTrusted) {
+        try {
+          setTrustedUsers(JSON.parse(savedTrusted))
+        } catch (e) {
+          console.error('Failed to parse trusted users metadata', e)
+        }
+      }
     }
-  }, [])
+  }, [isOpen])
+
+  const [trustedUsers, setTrustedUsers] = useState<{persistentId: string, displayName: string}[]>([])
+
+  const removeTrustedUser = (persistentId: string) => {
+    const updated = trustedUsers.filter(u => u.persistentId !== persistentId)
+    setTrustedUsers(updated)
+    
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('hub-trusted-users-metadata', JSON.stringify(updated))
+      localStorage.setItem('hub-trusted-users', JSON.stringify(updated.map(u => u.persistentId)))
+    }
+  }
 
   // Apply theme
   useEffect(() => {
@@ -150,6 +172,17 @@ export function SettingsModal({ isOpen, onClose, session }: SettingsModalProps) 
           >
             Notifications
           </button>
+
+          <button
+            onClick={() => setActiveTab('privacy')}
+            className={`w-full text-left px-3 py-2 rounded-md transition-colors ${
+              activeTab === 'privacy' 
+                ? 'bg-primary text-primary-foreground font-medium' 
+                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'
+            }`}
+          >
+            Privacy & Friends
+          </button>
         </div>
 
         {/* Mobile Tabs */}
@@ -177,6 +210,14 @@ export function SettingsModal({ isOpen, onClose, session }: SettingsModalProps) 
             }`}
           >
             Notifications
+          </button>
+          <button
+            onClick={() => setActiveTab('privacy')}
+            className={`flex-1 min-w-[100px] text-center px-3 py-2 rounded-md transition-colors text-sm ${
+              activeTab === 'privacy' ? 'bg-primary text-primary-foreground font-medium' : 'text-gray-600 dark:text-gray-300'
+            }`}
+          >
+            Privacy
           </button>
         </div>
 
@@ -304,15 +345,77 @@ export function SettingsModal({ isOpen, onClose, session }: SettingsModalProps) 
                   </label>
                 </div>
                 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Desktop Notifications</h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Show native browser notifications for new activity.</p>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Desktop Notifications</h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Show native browser notifications for new activity.</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" className="sr-only peer" checked={desktopEnabled} onChange={(e) => handleDesktopToggle(e.target.checked)} />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/30 dark:peer-focus:ring-primary/80 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
+                    </label>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" className="sr-only peer" checked={desktopEnabled} onChange={(e) => handleDesktopToggle(e.target.checked)} />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/30 dark:peer-focus:ring-primary/80 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
-                  </label>
+                  
+                  {typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted' && (
+                    <div className="p-3 bg-primary/10 rounded-lg border border-primary/20 flex flex-col space-y-2">
+                      <p className="text-xs text-primary font-medium">Browser permission is required for desktop notifications.</p>
+                      <button
+                        onClick={() => handleDesktopToggle(true)}
+                        className="text-xs bg-primary text-primary-foreground py-1.5 px-3 rounded hover:bg-primary/90 transition-colors self-start"
+                      >
+                        Request Browser Permission
+                      </button>
+                    </div>
+                  )}
+                  
+                  {typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'denied' && (
+                    <p className="text-[10px] text-red-500 italic">
+                      Notifications are blocked by your browser settings. Please enable them in your browser's site settings to use this feature.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Privacy Tab */}
+            {activeTab === 'privacy' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-4">Trusted Users</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                    These users can connect with you automatically. Removing them will require a new connection request.
+                  </p>
+                  
+                  {trustedUsers.length === 0 ? (
+                    <div className="text-center py-8 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">
+                      <p className="text-sm text-gray-500">No trusted users yet.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {trustedUsers.map((user) => (
+                        <div 
+                          key={user.persistentId} 
+                          className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-md"
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center text-primary font-bold">
+                              {user.displayName[0].toUpperCase()}
+                            </div>
+                            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                              {user.displayName}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => removeTrustedUser(user.persistentId)}
+                            className="text-xs text-red-500 hover:text-red-600 font-medium px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                          >
+                            Remove Trust
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

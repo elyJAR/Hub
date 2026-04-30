@@ -18,19 +18,37 @@ interface SessionData {
 interface UserListProps {
   currentSession: SessionData
   selectedUserPersistentId?: string
+  selectedGroupId?: string
   onSelectUser: (persistentId: string) => void
+  onSelectGroup: (groupId: string) => void
   isConnected: boolean
 }
 
 export function UserList({ 
   currentSession, 
   selectedUserPersistentId, 
+  selectedGroupId,
   onSelectUser,
+  onSelectGroup,
   isConnected 
 }: UserListProps) {
-  const { addEventListener, sendMessage, users: allUsers } = useWebSocketContext()
+  const { addEventListener, sendMessage, users: allUsers, groups, createGroup, joinGroup } = useWebSocketContext()
   const [connections, setConnections] = useState<Set<string>>(new Set())
   const [pendingRequests, setPendingRequests] = useState<Set<string>>(new Set())
+
+  const handleCreateGroup = () => {
+    const name = prompt('Enter group name:')
+    if (name && name.trim()) {
+      createGroup(name.trim())
+    }
+  }
+
+  const handleJoinGroup = () => {
+    const id = prompt('Enter group ID:')
+    if (id && id.trim()) {
+      joinGroup(id.trim())
+    }
+  }
 
   // Filter out current user from the list
   const users = allUsers.filter(user => user.sessionId !== currentSession.sessionId)
@@ -148,13 +166,58 @@ export function UserList({
           </div>
         </div>
         
-        <div className="text-xs text-muted-foreground">
-          {users.length} {users.length === 1 ? 'user' : 'users'} online
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={handleCreateGroup}
+            className="text-[10px] bg-blue-500/10 text-blue-500 py-2 rounded-md hover:bg-blue-500/20 transition-colors flex items-center justify-center space-x-1 font-bold"
+          >
+            <Users className="w-3 h-3" />
+            <span>CREATE</span>
+          </button>
+          <button
+            onClick={handleJoinGroup}
+            className="text-[10px] bg-purple-500/10 text-purple-500 py-2 rounded-md hover:bg-purple-500/20 transition-colors flex items-center justify-center space-x-1 font-bold"
+          >
+            <Users className="w-3 h-3" />
+            <span>JOIN BY ID</span>
+          </button>
         </div>
       </div>
 
       {/* User List */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
+        {/* Groups List */}
+        {groups.length > 0 && (
+          <div className="p-2 space-y-1">
+            <h3 className="px-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 mt-2">Groups</h3>
+            {groups.map((group) => (
+              <div
+                key={group.id}
+                className={`
+                  p-3 rounded-lg cursor-pointer transition-colors
+                  ${selectedGroupId === group.id 
+                    ? 'bg-blue-500/10 border border-blue-500/20' 
+                    : 'hover:bg-muted/50'
+                  }
+                `}
+                onClick={() => onSelectGroup(group.id)}
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
+                    <Users className="w-5 h-5 text-blue-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-medium text-foreground truncate">{group.name}</h3>
+                    <p className="text-[10px] text-muted-foreground">{group.members.length} members</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div className="border-b border-border/50 my-4 mx-2" />
+          </div>
+        )}
+
+        <h3 className="px-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 mt-4">Direct Messages</h3>
         {users.length === 0 ? (
           <div className="p-4 text-center">
             <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">

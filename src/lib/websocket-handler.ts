@@ -205,10 +205,121 @@ export class WebSocketMessageHandler {
       case 'webrtc-file-ice-candidate':
         this.handleWebRTCSignaling(session, message)
         break
+
+      case 'group-create':
+        this.handleGroupCreate(session, message)
+        break
+      
+      case 'group-join':
+        this.handleGroupJoin(session, message)
+        break
+      
+      case 'group-leave':
+        this.handleGroupLeave(session, message)
+        break
+      
+      case 'group-chat-message':
+        this.handleGroupChatMessage(session, message)
+        break
+      
+      case 'group-chat-message-edit':
+        this.handleGroupChatMessageEdit(session, message)
+        break
+      
+      case 'group-chat-message-delete':
+        this.handleGroupChatMessageDelete(session, message)
+        break
       
       default:
         this.sendError(session.socket, 'UNKNOWN_MESSAGE_TYPE', 'Unknown message type')
     }
+  }
+
+  private handleGroupCreate(session: SessionData, message: any): void {
+    if (!message.name || typeof message.name !== 'string') {
+      this.sendError(session.socket, 'INVALID_GROUP_NAME', 'Group name is required')
+      return
+    }
+
+    const group = this.sessionManager.createGroup(message.name, session.sessionId)
+    
+    this.sendMessage(session.socket, {
+      type: 'group-created',
+      group: {
+        ...group,
+        members: Array.from(group.members)
+      }
+    })
+
+    console.log(`Group "${group.name}" created by ${session.displayName}`)
+  }
+
+  private handleGroupJoin(session: SessionData, message: any): void {
+    const success = this.sessionManager.joinGroup(message.groupId, session.sessionId)
+    if (success) {
+      const group = this.sessionManager.getGroup(message.groupId)!
+      
+      // Notify group members
+      this.broadcastToGroup(message.groupId, {
+        type: 'group-user-joined',
+        groupId: message.groupId,
+        userId: session.sessionId,
+        displayName: session.displayName,
+        members: Array.from(group.members)
+      })
+
+      console.log(`${session.displayName} joined group ${group.name}`)
+    } else {
+      this.sendError(session.socket, 'GROUP_NOT_FOUND', 'Group not found')
+    }
+  }
+
+  private handleGroupLeave(session: SessionData, message: any): void {
+    const group = this.sessionManager.getGroup(message.groupId)
+    if (group) {
+      this.sessionManager.leaveGroup(message.groupId, session.sessionId)
+      
+      // Notify remaining members
+      this.broadcastToGroup(message.groupId, {
+        type: 'group-user-left',
+        groupId: message.groupId,
+        userId: session.sessionId,
+        displayName: session.displayName,
+        members: Array.from(group.members)
+      })
+
+      console.log(`${session.displayName} left group ${group.name}`)
+    }
+  }
+
+  private handleGroupChatMessage(session: SessionData, message: any): void {
+    const group = this.sessionManager.getGroup(message.groupId)
+    if (!group || !group.members.has(session.sessionId)) {
+      this.sendError(session.socket, 'NOT_IN_GROUP', 'You are not a member of this group')
+      return
+    }
+
+    this.broadcastToGroup(message.groupId, {
+      type: 'group-chat-message-received',
+      messageId: message.id,
+      groupId: message.groupId,
+      fromSessionId: session.sessionId,
+      fromDisplayName: session.displayName,
+      content: message.content,
+      timestamp: message.timestamp,
+    })
+  }
+
+  private broadcastToGroup(groupId: string, message: any): void {
+    const group = this.sessionManager.getGroup(groupId)
+    if (!group) return
+
+    group.members.forEach(memberId => {
+      const memberSession = this.sessionManager.getSession(memberId)
+      if (memberSession && memberSession.socket) {
+        this.sendMessage(memberSession.socket, message)
+      }
+    })
   }
 
   private handleConnectionRequest(session: SessionData, message: any): void {
@@ -322,12 +433,6 @@ export class WebSocketMessageHandler {
       return
     }
 
-    // Check if users are connected
-    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) {
-      this.sendError(session.socket, 'NOT_CONNECTED', 'Not connected to this user')
-      return
-    }
-
     // Forward message to target
     this.sendMessage(targetSession.socket, {
       type: 'chat-message-received',
@@ -348,15 +453,15 @@ export class WebSocketMessageHandler {
   }
 
   private handleChatMessageEdit(session: SessionData, message: any): void {
+    console.log('[WebSocketHandler] Handling chat-message-edit from:', session.displayName, 'to:', message.targetSessionId)
     const targetSession = this.sessionManager.getSession(message.targetSessionId)
     if (!targetSession) return
-
-    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) return
 
     this.sendMessage(targetSession.socket, {
       type: 'chat-message-edited',
       messageId: message.messageId,
       newContent: message.newContent,
+      fromPersistentId: session.persistentId,
     })
     
     // Echo confirmation to sender
@@ -367,15 +472,37 @@ export class WebSocketMessageHandler {
     })
   }
 
+  private handleGroupChatMessageEdit(session: SessionData, message: any): void {
+    console.log('[WebSocketHandler] Handling group-chat-message-edit from:', session.displayName, 'in group:', message.groupId)
+    this.broadcastToGroup(message.groupId, {
+      type: 'group-chat-message-edited',
+      groupId: message.groupId,
+      messageId: message.messageId,
+      newContent: message.newContent,
+      fromSessionId: session.sessionId,
+      fromDisplayName: session.displayName
+    })
+  }
+
+  private handleGroupChatMessageDelete(session: SessionData, message: any): void {
+    console.log('[WebSocketHandler] Handling group-chat-message-delete from:', session.displayName, 'in group:', message.groupId)
+    this.broadcastToGroup(message.groupId, {
+      type: 'group-chat-message-deleted',
+      groupId: message.groupId,
+      messageId: message.messageId,
+      fromSessionId: session.sessionId,
+      fromDisplayName: session.displayName
+    })
+  }
+
   private handleChatMessageDelete(session: SessionData, message: any): void {
     const targetSession = this.sessionManager.getSession(message.targetSessionId)
     if (!targetSession) return
 
-    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) return
-
     this.sendMessage(targetSession.socket, {
       type: 'chat-message-deleted',
       messageId: message.messageId,
+      fromPersistentId: session.persistentId,
     })
     
     // Echo confirmation to sender
@@ -388,8 +515,6 @@ export class WebSocketMessageHandler {
   private handleTypingIndicator(session: SessionData, message: any): void {
     const targetSession = this.sessionManager.getSession(message.targetSessionId)
     if (!targetSession) return
-
-    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) return
 
     this.sendMessage(targetSession.socket, {
       type: 'typing-indicator-received',
@@ -411,21 +536,16 @@ export class WebSocketMessageHandler {
       return
     }
 
-    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) {
-      this.sendError(session.socket, 'NOT_CONNECTED', 'Not connected to this user')
-      return
-    }
-
     // Send file transfer request to target
     this.sendMessage(targetSession.socket, {
       type: 'incoming-file-transfer-request',
-      requestId: message.id,
       fromSessionId: session.sessionId,
+      fromPersistentId: session.persistentId,
       fromDisplayName: session.displayName,
       fileName: message.fileName,
       fileSize: message.fileSize,
       fileType: message.fileType,
-      expiresAt: Date.now() + 30000,
+      requestId: message.id,
     })
   }
 
@@ -433,21 +553,19 @@ export class WebSocketMessageHandler {
     const targetSession = this.sessionManager.getSession(message.targetSessionId)
     if (!targetSession) return
 
-    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) return
-
     this.sendMessage(targetSession.socket, {
       type: 'file-transfer-response',
       requestId: message.requestId,
       accepted: message.accepted,
       fromSessionId: session.sessionId,
+      fromPersistentId: session.persistentId,
+      fromDisplayName: session.displayName,
     })
   }
 
   private handleFileTransferData(session: SessionData, message: any): void {
     const targetSession = this.sessionManager.getSession(message.targetSessionId)
     if (!targetSession) return
-
-    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) return
 
     this.sendMessage(targetSession.socket, {
       type: 'file-transfer-data',
@@ -463,8 +581,6 @@ export class WebSocketMessageHandler {
   private handleWebRTCSignaling(session: SessionData, message: any): void {
     const targetSession = this.sessionManager.getSession(message.targetSessionId)
     if (!targetSession) return
-
-    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) return
 
     // Relay WebRTC signaling message with sender info
     this.sendMessage(targetSession.socket, {

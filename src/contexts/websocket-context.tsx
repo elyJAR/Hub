@@ -15,11 +15,15 @@ interface WebSocketContextType {
   } | null
   users: any[]
   connections: Set<string>
+  groups: any[]
   joinSession: (displayName: string, avatar?: string) => Promise<void>
   sendMessage: (message: any) => void
   reconnect: (token?: string) => void
   disconnect: () => void
   addEventListener: (type: string, callback: (data: any) => void) => () => void
+  createGroup: (name: string) => void
+  joinGroup: (groupId: string) => void
+  leaveGroup: (groupId: string) => void
 }
 
 const WebSocketContext = createContext<WebSocketContextType | null>(null)

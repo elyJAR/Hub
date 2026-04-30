@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { WebSocketMessage, UserSession } from '@/types/messages'
+import { soundManager } from '@/lib/sound-manager'
 
 interface SessionData {
   sessionId: string
@@ -17,6 +18,7 @@ interface WebSocketState {
   session: SessionData | null
   users: UserSession[]
   connections: Set<string>
+  groups: any[]
 }
 
 interface WebSocketHook extends WebSocketState {
@@ -25,6 +27,9 @@ interface WebSocketHook extends WebSocketState {
   reconnect: (token?: string) => void
   disconnect: () => void
   addEventListener: (type: string, callback: (data: any) => void) => () => void
+  createGroup: (name: string) => void
+  joinGroup: (groupId: string) => void
+  leaveGroup: (groupId: string) => void
 }
 
 const WEBSOCKET_URL = typeof window !== 'undefined'
@@ -43,6 +48,7 @@ export function useWebSocket(): WebSocketHook {
     session: null,
     users: [],
     connections: new Set(),
+    groups: [],
   })
 
   const sessionRef = useRef<SessionData | null>(null)
@@ -92,7 +98,8 @@ export function useWebSocket(): WebSocketHook {
 
   // Send message through WebSocket
   const sendMessage = useCallback((message: any) => {
-    if (!state.session) {
+    const currentSession = sessionRef.current
+    if (!currentSession) {
       console.error('Cannot send message: No active session')
       return
     }
@@ -101,7 +108,7 @@ export function useWebSocket(): WebSocketHook {
       ...message,
       id: generateMessageId(),
       timestamp: Date.now(),
-      sessionId: state.session.sessionId,
+      sessionId: currentSession.sessionId,
     }
 
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -111,7 +118,7 @@ export function useWebSocket(): WebSocketHook {
       messageQueueRef.current.push(fullMessage)
       console.warn('WebSocket not connected, message queued')
     }
-  }, [state.session, generateMessageId])
+  }, [generateMessageId])
 
   // Process queued messages
   const processMessageQueue = useCallback(() => {
@@ -173,6 +180,17 @@ export function useWebSocket(): WebSocketHook {
             const trustedUsers = trustedUsersStr ? JSON.parse(trustedUsersStr) : []
             if (!trustedUsers.includes(message.persistentId)) {
               localStorage.setItem('hub-trusted-users', JSON.stringify([...trustedUsers, message.persistentId]))
+              
+              // Also store metadata for Settings UI
+              const savedMetadata = localStorage.getItem('hub-trusted-users-metadata')
+              const metadata = savedMetadata ? JSON.parse(savedMetadata) : []
+              if (!metadata.some((u: any) => u.persistentId === message.persistentId)) {
+                metadata.push({
+                  persistentId: message.persistentId,
+                  displayName: message.displayName || 'Unknown User'
+                })
+                localStorage.setItem('hub-trusted-users-metadata', JSON.stringify(metadata))
+              }
             }
           }
           
@@ -184,6 +202,9 @@ export function useWebSocket(): WebSocketHook {
           break
 
         case 'incoming-connection-request':
+          // Play sound
+          soundManager.play('messageReceived')
+
           // Check if this is a trusted user (auto-accept)
           const trustedUsersStr = typeof window !== 'undefined' ? localStorage.getItem('hub-trusted-users') : null
           const trustedUsers = trustedUsersStr ? JSON.parse(trustedUsersStr) : []
@@ -204,7 +225,48 @@ export function useWebSocket(): WebSocketHook {
           break
 
         case 'chat-message-received':
+          // Play sound
+          soundManager.play('messageReceived')
+
           emitEvent('chat-message-received', message)
+          break
+
+        case 'group-created':
+          setState(prev => ({
+            ...prev,
+            groups: [...prev.groups, message.group]
+          }))
+          emitEvent('group-created', message)
+          break
+
+        case 'group-user-joined':
+          setState(prev => ({
+            ...prev,
+            groups: prev.groups.map(g => g.id === message.groupId ? { ...g, members: message.members } : g)
+          }))
+          emitEvent('group-user-joined', message)
+          break
+
+        case 'group-user-left':
+          setState(prev => ({
+            ...prev,
+            groups: prev.groups.map(g => g.id === message.groupId ? { ...g, members: message.members } : g)
+          }))
+          emitEvent('group-user-left', message)
+          break
+
+        case 'group-chat-message-received':
+          // Play sound
+          soundManager.play('messageReceived')
+          emitEvent('group-chat-message-received', message)
+          break
+
+        case 'group-chat-message-edited':
+          emitEvent('group-chat-message-edited', message)
+          break
+
+        case 'group-chat-message-deleted':
+          emitEvent('group-chat-message-deleted', message)
           break
 
         case 'chat-message-edited':
@@ -281,7 +343,7 @@ export function useWebSocket(): WebSocketHook {
     } catch (error) {
       console.error('Error parsing WebSocket message:', error)
     }
-  }, [emitEvent])
+  }, [emitEvent, sendMessage])
 
   // Connect to WebSocket
   const connect = useCallback((reconnectToken?: string) => {
@@ -488,6 +550,7 @@ export function useWebSocket(): WebSocketHook {
       session: null,
       users: [],
       connections: new Set(),
+      groups: [],
     })
 
     messageQueueRef.current = []
@@ -566,15 +629,27 @@ export function useWebSocket(): WebSocketHook {
     }
   }, [state.isConnected, state.session?.sessionId, sendMessage])
 
-  // Expose addEventListener for components to use
-  const hookWithEvents = {
+  const createGroup = useCallback((name: string) => {
+    sendMessage({ type: 'group-create', name })
+  }, [sendMessage])
+
+  const joinGroup = useCallback((groupId: string) => {
+    sendMessage({ type: 'group-join', groupId })
+  }, [sendMessage])
+
+  const leaveGroup = useCallback((groupId: string) => {
+    sendMessage({ type: 'group-leave', groupId })
+  }, [sendMessage])
+
+  return {
     ...state,
     joinSession,
     sendMessage,
     reconnect,
     disconnect,
     addEventListener,
+    createGroup,
+    joinGroup,
+    leaveGroup,
   }
-
-  return hookWithEvents
 }

@@ -159,6 +159,49 @@ export const WebRTCCallEndedSchema = BaseMessageSchema.extend({
   targetSessionId: z.string(),
 })
 
+// Group chat schemas
+export const GroupDataSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  creatorId: z.string(),
+  members: z.array(z.string()),
+  createdAt: z.number(),
+})
+
+export const GroupCreateSchema = BaseMessageSchema.extend({
+  type: z.literal('group-create'),
+  name: z.string(),
+})
+
+export const GroupJoinSchema = BaseMessageSchema.extend({
+  type: z.literal('group-join'),
+  groupId: z.string(),
+})
+
+export const GroupLeaveSchema = BaseMessageSchema.extend({
+  type: z.literal('group-leave'),
+  groupId: z.string(),
+})
+
+export const GroupChatMessageSchema = BaseMessageSchema.extend({
+  type: z.literal('group-chat-message'),
+  groupId: z.string(),
+  content: z.string(),
+})
+
+export const GroupChatMessageEditSchema = BaseMessageSchema.extend({
+  type: z.literal('group-chat-message-edit'),
+  groupId: z.string(),
+  messageId: z.string(),
+  newContent: z.string(),
+})
+
+export const GroupChatMessageDeleteSchema = BaseMessageSchema.extend({
+  type: z.literal('group-chat-message-delete'),
+  groupId: z.string(),
+  messageId: z.string(),
+})
+
 // Union of all message types
 export const WebSocketMessageSchema = z.discriminatedUnion('type', [
   ConnectionRequestSchema,
@@ -180,6 +223,12 @@ export const WebSocketMessageSchema = z.discriminatedUnion('type', [
   WebRTCFileOfferSchema,
   WebRTCFileAnswerSchema,
   WebRTCFileIceCandidateSchema,
+  GroupCreateSchema,
+  GroupJoinSchema,
+  GroupLeaveSchema,
+  GroupChatMessageSchema,
+  GroupChatMessageEditSchema,
+  GroupChatMessageDeleteSchema,
 ])
 
 // Type exports

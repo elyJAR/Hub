@@ -11,11 +11,21 @@ export interface SessionData extends UserSession {
   lastActivity: number
 }
 
+export interface GroupData {
+  id: string
+  name: string
+  creatorId: string
+  members: Set<string> // session IDs
+  createdAt: number
+}
+
 const DATA_DIR = path.join(process.cwd(), 'data')
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json')
+const GROUPS_FILE = path.join(DATA_DIR, 'groups.json')
 
 export class SessionManager {
   private sessions = new Map<string, SessionData>()
+  private groups = new Map<string, GroupData>()
   private jwtSecret: string
   
   constructor() {
@@ -34,22 +44,32 @@ export class SessionManager {
           this.sessions.set(id, {
             ...s,
             status: 'offline',
-            socket: null, // sockets can't be saved
+            socket: null, 
             connections: new Set(s.connections),
           })
         }
-        console.log(`Loaded ${this.sessions.size} sessions from disk.`)
+      }
+      if (fs.existsSync(GROUPS_FILE)) {
+        const data = fs.readFileSync(GROUPS_FILE, 'utf-8')
+        const saved = JSON.parse(data)
+        for (const [id, g] of Object.entries(saved) as any) {
+          this.groups.set(id, {
+            ...g,
+            members: new Set(g.members),
+          })
+        }
       }
     } catch (e) {
-      console.error('Failed to load sessions from disk:', e)
+      console.error('Failed to load data from disk:', e)
     }
   }
 
   private saveToDisk() {
     try {
-      const toSave: any = {}
+      // Save Sessions
+      const sessionsToSave: any = {}
       for (const [id, s] of this.sessions) {
-        toSave[id] = {
+        sessionsToSave[id] = {
           sessionId: s.sessionId,
           persistentId: s.persistentId,
           displayName: s.displayName,
@@ -60,10 +80,64 @@ export class SessionManager {
           connections: Array.from(s.connections)
         }
       }
-      fs.writeFileSync(SESSIONS_FILE, JSON.stringify(toSave, null, 2))
+      fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessionsToSave, null, 2))
+
+      // Save Groups
+      const groupsToSave: any = {}
+      for (const [id, g] of this.groups) {
+        groupsToSave[id] = {
+          ...g,
+          members: Array.from(g.members)
+        }
+      }
+      fs.writeFileSync(GROUPS_FILE, JSON.stringify(groupsToSave, null, 2))
     } catch (e) {
-      console.error('Failed to save sessions:', e)
+      console.error('Failed to save data:', e)
     }
+  }
+
+  // Group Methods
+  createGroup(name: string, creatorId: string): GroupData {
+    const id = `group-${crypto.randomBytes(4).toString('hex')}`
+    const group: GroupData = {
+      id,
+      name,
+      creatorId,
+      members: new Set([creatorId]),
+      createdAt: Date.now()
+    }
+    this.groups.set(id, group)
+    this.saveToDisk()
+    return group
+  }
+
+  getGroup(groupId: string): GroupData | undefined {
+    return this.groups.get(groupId)
+  }
+
+  joinGroup(groupId: string, sessionId: string): boolean {
+    const group = this.groups.get(groupId)
+    if (group) {
+      group.members.add(sessionId)
+      this.saveToDisk()
+      return true
+    }
+    return false
+  }
+
+  leaveGroup(groupId: string, sessionId: string): void {
+    const group = this.groups.get(groupId)
+    if (group) {
+      group.members.delete(sessionId)
+      if (group.members.size === 0) {
+        this.groups.delete(groupId)
+      }
+      this.saveToDisk()
+    }
+  }
+
+  getGroupsForSession(sessionId: string): GroupData[] {
+    return Array.from(this.groups.values()).filter(g => g.members.has(sessionId))
   }
 
   createSession(socket: WebSocket, displayName: string, persistentId: string, avatar?: string, requestedSessionId?: string): SessionData {
