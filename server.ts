@@ -99,6 +99,16 @@ async function startServer() {
       sessionManager.cleanupInactiveSessions()
     }, 60000) // Every minute
 
+    // Ping all clients every 30 seconds to keep connections alive through NAT/firewalls.
+    // Browsers automatically respond to pings with a pong, so no client-side changes needed.
+    setInterval(() => {
+      wss.clients.forEach((ws: WebSocket) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.ping()
+        }
+      })
+    }, 30000)
+
     // Start server
     server.listen(port, hostname, () => {
       const networkIPs = getLocalNetworkIPs()

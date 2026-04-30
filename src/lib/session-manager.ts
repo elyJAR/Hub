@@ -45,6 +45,10 @@ export class SessionManager {
     }
   }
 
+  saveToDiskPublic() {
+    this.saveToDisk()
+  }
+
   private saveToDisk() {
     const toSave: any = {}
     for (const [id, s] of this.sessions) {

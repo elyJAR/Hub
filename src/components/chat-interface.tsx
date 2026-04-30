@@ -523,7 +523,12 @@ export function ChatInterface({
                           <p className="text-xs opacity-70">{(message.fileData.fileSize / 1024).toFixed(1)} KB</p>
                         </div>
                       </div>
-                      <a href={message.fileData.dataUrl} download={`Hub_${message.fileData.fileName}`} className="block w-full text-center text-xs py-1.5 px-2 bg-primary-foreground/20 text-current rounded hover:bg-primary-foreground/30 transition">
+                      <a
+                        href={message.fileData.dataUrl}
+                        download={`Hub_${message.fileData.fileName}`}
+                        onClick={() => toast.success(`Saving "${message.fileData?.fileName}" to your Downloads folder`)}
+                        className="block w-full text-center text-xs py-1.5 px-2 bg-primary-foreground/20 text-current rounded hover:bg-primary-foreground/30 transition"
+                      >
                         Download File
                       </a>
                     </div>
