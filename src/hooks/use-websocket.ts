@@ -160,12 +160,32 @@ export function useWebSocket(): WebSocketHook {
           emitEvent('connection-established', message)
           break
 
+        case 'connection-rejected':
+          emitEvent('connection-rejected', message)
+          break
+
         case 'incoming-connection-request':
           emitEvent('incoming-connection-request', message)
           break
 
         case 'chat-message-received':
           emitEvent('chat-message-received', message)
+          break
+
+        case 'chat-message-edited':
+          emitEvent('chat-message-edited', message)
+          break
+
+        case 'chat-message-edited-confirm':
+          emitEvent('chat-message-edited-confirm', message)
+          break
+
+        case 'chat-message-deleted':
+          emitEvent('chat-message-deleted', message)
+          break
+
+        case 'chat-message-deleted-confirm':
+          emitEvent('chat-message-deleted-confirm', message)
           break
 
         case 'message-delivered':
@@ -178,6 +198,14 @@ export function useWebSocket(): WebSocketHook {
 
         case 'incoming-file-transfer-request':
           emitEvent('incoming-file-transfer-request', message)
+          break
+
+        case 'file-transfer-response':
+          emitEvent('file-transfer-response', message)
+          break
+
+        case 'file-transfer-data':
+          emitEvent('file-transfer-data', message)
           break
 
         case 'file-transfer-start':
@@ -195,6 +223,8 @@ export function useWebSocket(): WebSocketHook {
         case 'webrtc-offer':
         case 'webrtc-answer':
         case 'webrtc-ice-candidate':
+        case 'webrtc-call-declined':
+        case 'webrtc-call-ended':
           emitEvent('webrtc-signaling', message)
           break
 

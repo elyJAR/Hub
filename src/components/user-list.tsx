@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { AvatarDisplay } from './avatar-picker'
 import { useWebSocketContext } from '@/contexts/websocket-context'
 import { UserSession } from '@/types/messages'
-import { Users } from 'lucide-react'
+import { Users, Phone, Loader2 } from 'lucide-react'
+import { toast } from '@/lib/toast'
 
 interface SessionData {
   sessionId: string
@@ -17,38 +18,125 @@ interface UserListProps {
   currentSession: SessionData
   selectedUserId?: string
   onSelectUser: (userId: string) => void
+  onStartCall?: (userId: string) => void
   isConnected: boolean
 }
 
 export function UserList({ 
   currentSession, 
   selectedUserId, 
-  onSelectUser, 
+  onSelectUser,
+  onStartCall, 
   isConnected 
 }: UserListProps) {
   const { addEventListener, sendMessage, users: allUsers } = useWebSocketContext()
   const [connections, setConnections] = useState<Set<string>>(new Set())
+  const [pendingRequests, setPendingRequests] = useState<Set<string>>(new Set())
 
   // Filter out current user from the list
   const users = allUsers.filter(user => user.sessionId !== currentSession.sessionId)
 
+  // Load persistent connections from localStorage (by displayName)
+  useEffect(() => {
+    const savedConnections = localStorage.getItem(`hub-connections-${currentSession.displayName}`)
+    if (savedConnections) {
+      try {
+        const parsed = JSON.parse(savedConnections) as string[]
+        console.log('[UserList] Loaded saved connection displayNames:', parsed)
+        
+        // Convert displayNames to current sessionIds
+        const sessionIds = new Set<string>()
+        parsed.forEach(displayName => {
+          const user = allUsers.find(u => u.displayName === displayName)
+          if (user) {
+            sessionIds.add(user.sessionId)
+            console.log(`[UserList] Mapped ${displayName} -> ${user.sessionId}`)
+          }
+        })
+        
+        setConnections(sessionIds)
+      } catch (e) {
+        console.error('Failed to parse saved connections', e)
+      }
+    }
+  }, [currentSession.displayName, allUsers])
+
+  // Save connections to localStorage (by displayName) whenever they change
+  useEffect(() => {
+    if (connections.size > 0) {
+      // Convert sessionIds to displayNames for storage
+      const displayNames = Array.from(connections)
+        .map(sessionId => {
+          const user = allUsers.find(u => u.sessionId === sessionId)
+          return user?.displayName
+        })
+        .filter(Boolean) as string[]
+      
+      console.log('[UserList] Saving connection displayNames:', displayNames)
+      localStorage.setItem(
+        `hub-connections-${currentSession.displayName}`,
+        JSON.stringify(displayNames)
+      )
+    }
+  }, [connections, currentSession.displayName, allUsers])
+
   // Listen for connection events
   useEffect(() => {
+    console.log('[UserList] Setting up event listeners')
+    
     const cleanup1 = addEventListener('connection-established', (data) => {
+      console.log('[UserList] Connection established:', data)
       setConnections(prev => new Set([...prev, data.sessionId]))
+      setPendingRequests(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(data.sessionId)
+        return newSet
+      })
+      
+      // Show success notification
+      console.log('[UserList] Showing success toast')
+      toast.success(`Connected with ${data.displayName}`)
     })
 
-    return cleanup1
+    const cleanup2 = addEventListener('connection-rejected', (data) => {
+      console.log('[UserList] Connection rejected:', data)
+      setPendingRequests(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(data.sessionId)
+        return newSet
+      })
+      
+      // Show rejection notification
+      toast.error(`${data.displayName} declined your request`)
+    })
+
+    return () => {
+      cleanup1()
+      cleanup2()
+    }
   }, [addEventListener])
 
   const handleConnectionRequest = (targetUserId: string) => {
+    console.log('[UserList] Sending connection request to:', targetUserId)
+    
+    // Generate unique request ID
+    const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    
+    // Add to pending immediately for instant feedback
+    setPendingRequests(prev => new Set([...prev, targetUserId]))
+    
+    // Show toast immediately
+    toast.info('Connection request sent')
+    
     sendMessage({
       type: 'connection-request',
       targetSessionId: targetUserId,
-    })
+      id: requestId,
+    } as any)
   }
 
   const isUserConnected = (userId: string) => connections.has(userId)
+  const isRequestPending = (userId: string) => pendingRequests.has(userId)
 
   return (
     <div className="h-full flex flex-col">
@@ -86,6 +174,7 @@ export function UserList({
           <div className="p-2 space-y-1">
             {users.map((user) => {
               const connected = isUserConnected(user.sessionId)
+              const pending = isRequestPending(user.sessionId)
               const isSelected = selectedUserId === user.sessionId
 
               return (
@@ -127,13 +216,13 @@ export function UserList({
                       </div>
                       
                       <p className="text-xs text-muted-foreground">
-                        {connected ? 'Connected' : 'Not connected'}
+                        {connected ? 'Connected' : pending ? 'Request pending...' : 'Not connected'}
                       </p>
                     </div>
                   </div>
 
-                  {/* Connection button */}
-                  {!connected && (
+                  {/* Action buttons */}
+                  {!connected && !pending ? (
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -143,6 +232,38 @@ export function UserList({
                     >
                       Send Connection Request
                     </button>
+                  ) : pending ? (
+                    <button
+                      disabled
+                      className="mt-2 w-full text-xs bg-muted text-muted-foreground py-1.5 px-3 rounded cursor-not-allowed flex items-center justify-center space-x-2"
+                    >
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>Waiting for response...</span>
+                    </button>
+                  ) : (
+                    <div className="mt-2 flex space-x-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onSelectUser(user.sessionId)
+                        }}
+                        className="flex-1 text-xs bg-muted text-foreground py-1.5 px-3 rounded hover:bg-muted/80 transition-colors"
+                      >
+                        Message
+                      </button>
+                      {onStartCall && user.status !== 'in-call' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onStartCall(user.sessionId)
+                          }}
+                          className="flex items-center justify-center text-xs bg-green-500 text-white py-1.5 px-3 rounded hover:bg-green-600 transition-colors"
+                          title="Start voice call"
+                        >
+                          <Phone className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               )

@@ -197,6 +197,8 @@ export class WebSocketMessageHandler {
       case 'webrtc-offer':
       case 'webrtc-answer':
       case 'webrtc-ice-candidate':
+      case 'webrtc-call-declined':
+      case 'webrtc-call-ended':
         this.handleWebRTCSignaling(session, message)
         break
       
@@ -218,9 +220,12 @@ export class WebSocketMessageHandler {
       return
     }
 
+    // Use the provided ID or generate one
+    const requestId = message.id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    
     // Store the pending request
     const expiresAt = Date.now() + 30000 // 30 seconds
-    this.pendingRequests.set(message.id, {
+    this.pendingRequests.set(requestId, {
       fromSessionId: session.sessionId,
       toSessionId: message.targetSessionId,
       expiresAt,
@@ -229,7 +234,7 @@ export class WebSocketMessageHandler {
     // Send request to target user
     this.sendMessage(targetSession.socket, {
       type: 'incoming-connection-request',
-      requestId: message.id,
+      requestId: requestId,
       fromSessionId: session.sessionId,
       fromDisplayName: session.displayName,
       fromAvatar: session.avatar,
@@ -239,7 +244,7 @@ export class WebSocketMessageHandler {
     // Confirm request sent
     this.sendMessage(session.socket, {
       type: 'request-sent',
-      requestId: message.id,
+      requestId: requestId,
       targetSessionId: message.targetSessionId,
     })
 

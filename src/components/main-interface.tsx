@@ -5,7 +5,9 @@ import { UserList } from './user-list'
 import { ChatInterface } from './chat-interface'
 import { ConnectionRequestModal, ConnectionRequestToast } from './connection-request-modal'
 import { SettingsModal } from './settings-modal'
+import { CallInterface } from './call-interface'
 import { useConnectionRequests } from '@/hooks/use-connection-requests'
+import { useWebRTC } from '@/hooks/use-webrtc'
 import { Menu, Users, Bell, Settings, Inbox } from 'lucide-react'
 
 interface SessionData {
@@ -25,6 +27,21 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+
+  // WebRTC hook for voice calls
+  const {
+    isInCall,
+    isCallIncoming,
+    isMuted,
+    callDuration,
+    remoteUserId,
+    remoteUserName,
+    startCall,
+    acceptCall,
+    declineCall,
+    endCall,
+    toggleMute,
+  } = useWebRTC()
 
   // Auto-close sidebar on mobile devices initially
   useEffect(() => {
@@ -83,6 +100,7 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
               setIsSidebarOpen(false)
             }
           }}
+          onStartCall={startCall}
           isConnected={isConnected}
         />
       </div>
@@ -209,6 +227,21 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
         onClose={() => setIsSettingsOpen(false)}
         session={session}
       />
+
+      {/* Call Interface */}
+      {(isInCall || isCallIncoming) && (
+        <CallInterface
+          isIncoming={isCallIncoming}
+          remoteUserName={remoteUserName || 'Unknown User'}
+          remoteAvatar={undefined}
+          callDuration={callDuration}
+          isMuted={isMuted}
+          onAccept={acceptCall}
+          onDecline={declineCall}
+          onEnd={endCall}
+          onToggleMute={toggleMute}
+        />
+      )}
     </div>
   )
 }

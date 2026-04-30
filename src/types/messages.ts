@@ -116,6 +116,17 @@ export const WebRTCIceCandidateSchema = BaseMessageSchema.extend({
   }),
 })
 
+// WebRTC call control
+export const WebRTCCallDeclinedSchema = BaseMessageSchema.extend({
+  type: z.literal('webrtc-call-declined'),
+  targetSessionId: z.string(),
+})
+
+export const WebRTCCallEndedSchema = BaseMessageSchema.extend({
+  type: z.literal('webrtc-call-ended'),
+  targetSessionId: z.string(),
+})
+
 // Union of all message types
 export const WebSocketMessageSchema = z.discriminatedUnion('type', [
   ConnectionRequestSchema,
@@ -132,6 +143,8 @@ export const WebSocketMessageSchema = z.discriminatedUnion('type', [
   WebRTCOfferSchema,
   WebRTCAnswerSchema,
   WebRTCIceCandidateSchema,
+  WebRTCCallDeclinedSchema,
+  WebRTCCallEndedSchema,
 ])
 
 // Type exports
@@ -151,3 +164,5 @@ export type FileTransferData = z.infer<typeof FileTransferDataSchema>
 export type WebRTCOffer = z.infer<typeof WebRTCOfferSchema>
 export type WebRTCAnswer = z.infer<typeof WebRTCAnswerSchema>
 export type WebRTCIceCandidate = z.infer<typeof WebRTCIceCandidateSchema>
+export type WebRTCCallDeclined = z.infer<typeof WebRTCCallDeclinedSchema>
+export type WebRTCCallEnded = z.infer<typeof WebRTCCallEndedSchema>

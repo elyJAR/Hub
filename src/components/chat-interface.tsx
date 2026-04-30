@@ -5,6 +5,7 @@ import { AvatarDisplay } from './avatar-picker'
 import { useWebSocketContext } from '@/contexts/websocket-context'
 import EmojiPicker from 'emoji-picker-react'
 import { MessageSquare, File, Download, Pencil, Trash2, X, SmilePlus, Paperclip, Send, Check } from 'lucide-react'
+import { toast } from '@/lib/toast'
 
 interface SessionData {
   sessionId: string
@@ -92,6 +93,7 @@ export function ChatInterface({
           ? { ...msg, content: data.newContent, isEdited: true }
           : msg
       ))
+      toast.info('Message edited')
     })
 
     const cleanup5 = addEventListener('chat-message-edited-confirm', (data) => {
@@ -108,6 +110,7 @@ export function ChatInterface({
           ? { ...msg, isDeleted: true }
           : msg
       ))
+      toast.info('Message deleted')
     })
 
     const cleanup7 = addEventListener('chat-message-deleted-confirm', (data) => {
@@ -142,6 +145,7 @@ export function ChatInterface({
             transferStatus: 'pending'
           }
         }])
+        toast.info(`${data.fromDisplayName} wants to send you a file`)
       }
     })
 
@@ -324,7 +328,7 @@ export function ChatInterface({
     if (!file || !isConnected) return
 
     if (file.size > 5 * 1024 * 1024) {
-      alert("File is too large! For now, only files under 5MB are supported.")
+      toast.error("File is too large! For now, only files under 5MB are supported.")
       return
     }
 
@@ -360,6 +364,7 @@ export function ChatInterface({
     }
     
     setMessages(prev => [...prev, newMessage])
+    toast.info('File transfer request sent')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -376,6 +381,12 @@ export function ChatInterface({
         ? { ...msg, fileData: { ...msg.fileData!, transferStatus: accepted ? 'completed' : 'declined' } }
         : msg
     ))
+    
+    if (accepted) {
+      toast.success('File transfer accepted')
+    } else {
+      toast.info('File transfer declined')
+    }
   }
 
   return (

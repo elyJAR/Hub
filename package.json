@@ -36,6 +36,12 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:report": "playwright show-report",
+    "test:all": "npm run test && npm run test:e2e",
     "generate:icons": "node scripts/generate-icons.js",
     "docker:build": "docker build -t hub .",
     "docker:run": "docker run -p 3000:3000 hub",
@@ -55,6 +61,7 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@testing-library/jest-dom": "^6.1.0",
     "@testing-library/react": "^14.0.0",
     "@testing-library/user-event": "^14.5.0",
@@ -71,6 +78,7 @@
     "eslint-config-next": "^14.0.0",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
+    "playwright": "^1.59.1",
     "postcss": "^8.0.0",
     "prettier": "^3.0.0",
     "tailwindcss": "^3.3.0",
