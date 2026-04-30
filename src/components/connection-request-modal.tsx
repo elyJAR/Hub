@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { AvatarDisplay } from './avatar-picker'
 import { useWebSocket } from '@/hooks/use-websocket'
+import { X, UserPlus } from 'lucide-react'
 
 interface ConnectionRequest {
   requestId: string
@@ -89,19 +90,7 @@ export function ConnectionRequestModal({ isOpen, onClose }: ConnectionRequestMod
             onClick={onClose}
             className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-primary"
           >
-            <svg
-              className="w-5 h-5 text-gray-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
@@ -110,19 +99,7 @@ export function ConnectionRequestModal({ isOpen, onClose }: ConnectionRequestMod
           {pendingRequests.length === 0 ? (
             <div className="p-6 text-center">
               <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-3">
-                <svg
-                  className="w-6 h-6 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"
-                  />
-                </svg>
+                <UserPlus className="w-6 h-6 text-gray-400" />
               </div>
               <p className="text-gray-500 dark:text-gray-400">
                 No pending connection requests
@@ -257,19 +234,7 @@ export function ConnectionRequestToast({
           onClick={onDismiss}
           className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
         >
-          <svg
-            className="w-4 h-4 text-gray-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
+          <X className="w-4 h-4 text-gray-400" />
         </button>
       </div>
     </div>

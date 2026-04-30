@@ -19,20 +19,9 @@ function HomePageContent() {
   } = useWebSocketContext()
 
   useEffect(() => {
-    // Check if user was previously connected (from localStorage)
-    const savedSession = localStorage.getItem('hub-session')
-    if (savedSession) {
-      try {
-        const sessionData = JSON.parse(savedSession)
-        // Attempt to reconnect with saved session
-        reconnect(sessionData.token)
-      } catch (error) {
-        console.error('Failed to restore session:', error)
-        localStorage.removeItem('hub-session')
-      }
-    }
+    console.log('[HomePage] Component mounted, checking session state')
     setIsLoading(false)
-  }, [reconnect])
+  }, [])
 
   useEffect(() => {
     // Save session to localStorage when user joins
@@ -55,7 +44,7 @@ function HomePageContent() {
   }
 
   if (isLoading) {
-    return <LoadingScreen message="Connecting to Hub..." />
+    return <LoadingScreen message="Loading Hub..." />
   }
 
   if (error && !isConnected) {

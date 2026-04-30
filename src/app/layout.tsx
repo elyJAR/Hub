@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
+import { HMRErrorSuppressor } from './hmr-error-suppressor'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -9,13 +10,14 @@ export const metadata: Metadata = {
   description: 'Connect, chat, and share files with anyone on your local network. No internet required.',
   keywords: ['local network', 'communication', 'chat', 'file sharing', 'WebRTC', 'LAN'],
   authors: [{ name: 'Hub Team' }],
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=1',
-  themeColor: '#3b82f6',
   manifest: '/manifest.json',
-  icons: {
-    icon: '/favicon.ico',
-    apple: '/apple-touch-icon.png',
-  },
+}
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: '#3b82f6',
 }
 
 export default function RootLayout({
@@ -34,6 +36,7 @@ export default function RootLayout({
         <meta name="msapplication-tap-highlight" content="no" />
       </head>
       <body className={`${inter.className} antialiased`}>
+        <HMRErrorSuppressor />
         <div id="root" className="min-h-screen bg-background">
           {children}
         </div>

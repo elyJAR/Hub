@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { AvatarPicker } from './avatar-picker'
+import { Users, AlertTriangle, Upload } from 'lucide-react'
 
 interface JoinScreenProps {
   onJoin: (displayName: string, avatar?: string) => Promise<void>
@@ -71,19 +72,7 @@ export function JoinScreen({ onJoin, isConnecting, error }: JoinScreenProps) {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-primary rounded-full mb-4">
-            <svg
-              className="w-8 h-8 text-primary-foreground"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-              />
-            </svg>
+            <Users className="w-8 h-8 text-primary-foreground" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
             Welcome to Hub
@@ -140,19 +129,7 @@ export function JoinScreen({ onJoin, isConnecting, error }: JoinScreenProps) {
             {currentError && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3">
                 <div className="flex">
-                  <svg
-                    className="w-5 h-5 text-red-400 mr-2 flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
+                  <AlertTriangle className="w-5 h-5 text-red-400 mr-2 flex-shrink-0" />
                   <p className="text-sm text-red-700 dark:text-red-400">
                     {currentError}
                   </p>

@@ -1,4 +1,4 @@
-import { WebSocket } from 'ws'
+import { WebSocket, RawData } from 'ws'
 import { nanoid } from 'nanoid'
 import { SessionManager, SessionData } from './session-manager'
 import { WebSocketMessageSchema, WebSocketMessage } from '@/types/messages'
@@ -31,9 +31,16 @@ export class WebSocketMessageHandler {
     console.log('WebSocket connection established, waiting for join message')
   }
 
-  handleMessage(ws: WebSocket, data: Buffer): void {
+  handleMessage(ws: WebSocket, data: RawData): void {
     try {
-      const rawMessage = JSON.parse(data.toString())
+      // Convert RawData to string
+      const messageString = data instanceof Buffer 
+        ? data.toString() 
+        : Array.isArray(data)
+        ? Buffer.concat(data).toString()
+        : data.toString()
+      
+      const rawMessage = JSON.parse(messageString)
       
       // Handle join message first (special case - no validation against main schema)
       if (rawMessage.type === 'join') {
@@ -159,8 +166,20 @@ export class WebSocketMessageHandler {
         this.handleChatMessage(session, message)
         break
       
+      case 'chat-message-edit':
+        this.handleChatMessageEdit(session, message)
+        break
+
+      case 'chat-message-delete':
+        this.handleChatMessageDelete(session, message)
+        break
+      
       case 'typing-indicator':
         this.handleTypingIndicator(session, message)
+        break
+
+      case 'user-status-update':
+        this.handleUserStatusUpdate(session, message)
         break
       
       case 'file-transfer-request':
@@ -169,6 +188,10 @@ export class WebSocketMessageHandler {
       
       case 'file-transfer-response':
         this.handleFileTransferResponse(session, message)
+        break
+
+      case 'file-transfer-data':
+        this.handleFileTransferData(session, message)
         break
       
       case 'webrtc-offer':
@@ -311,6 +334,44 @@ export class WebSocketMessageHandler {
     })
   }
 
+  private handleChatMessageEdit(session: SessionData, message: any): void {
+    const targetSession = this.sessionManager.getSession(message.targetSessionId)
+    if (!targetSession) return
+
+    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) return
+
+    this.sendMessage(targetSession.socket, {
+      type: 'chat-message-edited',
+      messageId: message.messageId,
+      newContent: message.newContent,
+    })
+    
+    // Echo confirmation to sender
+    this.sendMessage(session.socket, {
+      type: 'chat-message-edited-confirm',
+      messageId: message.messageId,
+      newContent: message.newContent,
+    })
+  }
+
+  private handleChatMessageDelete(session: SessionData, message: any): void {
+    const targetSession = this.sessionManager.getSession(message.targetSessionId)
+    if (!targetSession) return
+
+    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) return
+
+    this.sendMessage(targetSession.socket, {
+      type: 'chat-message-deleted',
+      messageId: message.messageId,
+    })
+    
+    // Echo confirmation to sender
+    this.sendMessage(session.socket, {
+      type: 'chat-message-deleted-confirm',
+      messageId: message.messageId,
+    })
+  }
+
   private handleTypingIndicator(session: SessionData, message: any): void {
     const targetSession = this.sessionManager.getSession(message.targetSessionId)
     if (!targetSession) return
@@ -323,6 +384,11 @@ export class WebSocketMessageHandler {
       fromDisplayName: session.displayName,
       isTyping: message.isTyping,
     })
+  }
+
+  private handleUserStatusUpdate(session: SessionData, message: any): void {
+    session.status = message.status
+    this.broadcastPresenceUpdate()
   }
 
   private handleFileTransferRequest(session: SessionData, message: any): void {
@@ -351,9 +417,34 @@ export class WebSocketMessageHandler {
   }
 
   private handleFileTransferResponse(session: SessionData, message: any): void {
-    // Implementation would handle file transfer acceptance/rejection
-    // For now, just relay the response
-    console.log('File transfer response:', message)
+    const targetSession = this.sessionManager.getSession(message.targetSessionId)
+    if (!targetSession) return
+
+    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) return
+
+    this.sendMessage(targetSession.socket, {
+      type: 'file-transfer-response',
+      requestId: message.requestId,
+      accepted: message.accepted,
+      fromSessionId: session.sessionId,
+    })
+  }
+
+  private handleFileTransferData(session: SessionData, message: any): void {
+    const targetSession = this.sessionManager.getSession(message.targetSessionId)
+    if (!targetSession) return
+
+    if (!this.sessionManager.isConnected(session.sessionId, message.targetSessionId)) return
+
+    this.sendMessage(targetSession.socket, {
+      type: 'file-transfer-data',
+      fromSessionId: session.sessionId,
+      fileId: message.fileId,
+      fileName: message.fileName,
+      fileType: message.fileType,
+      data: message.data,
+      timestamp: Date.now(),
+    })
   }
 
   private handleWebRTCSignaling(session: SessionData, message: any): void {

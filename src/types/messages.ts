@@ -34,9 +34,27 @@ export const ChatMessageSchema = BaseMessageSchema.extend({
   content: z.string(),
 })
 
+export const ChatMessageEditSchema = BaseMessageSchema.extend({
+  type: z.literal('chat-message-edit'),
+  targetSessionId: z.string(),
+  messageId: z.string(),
+  newContent: z.string(),
+})
+
+export const ChatMessageDeleteSchema = BaseMessageSchema.extend({
+  type: z.literal('chat-message-delete'),
+  targetSessionId: z.string(),
+  messageId: z.string(),
+})
+
 export const PresenceUpdateSchema = BaseMessageSchema.extend({
   type: z.literal('presence-update'),
   users: z.array(UserSessionSchema),
+})
+
+export const UserStatusUpdateSchema = BaseMessageSchema.extend({
+  type: z.literal('user-status-update'),
+  status: z.enum(['online', 'in-call', 'away']),
 })
 
 export const TypingIndicatorSchema = BaseMessageSchema.extend({
@@ -55,8 +73,18 @@ export const FileTransferRequestSchema = BaseMessageSchema.extend({
 
 export const FileTransferResponseSchema = BaseMessageSchema.extend({
   type: z.literal('file-transfer-response'),
+  targetSessionId: z.string(),
   requestId: z.string(),
   accepted: z.boolean(),
+})
+
+export const FileTransferDataSchema = BaseMessageSchema.extend({
+  type: z.literal('file-transfer-data'),
+  targetSessionId: z.string(),
+  fileId: z.string(),
+  fileName: z.string(),
+  fileType: z.string(),
+  data: z.string(), // base64
 })
 
 // WebRTC signaling
@@ -93,10 +121,14 @@ export const WebSocketMessageSchema = z.discriminatedUnion('type', [
   ConnectionRequestSchema,
   ConnectionResponseSchema,
   ChatMessageSchema,
+  ChatMessageEditSchema,
+  ChatMessageDeleteSchema,
   PresenceUpdateSchema,
+  UserStatusUpdateSchema,
   TypingIndicatorSchema,
   FileTransferRequestSchema,
   FileTransferResponseSchema,
+  FileTransferDataSchema,
   WebRTCOfferSchema,
   WebRTCAnswerSchema,
   WebRTCIceCandidateSchema,
@@ -108,10 +140,14 @@ export type WebSocketMessage = z.infer<typeof WebSocketMessageSchema>
 export type ConnectionRequest = z.infer<typeof ConnectionRequestSchema>
 export type ConnectionResponse = z.infer<typeof ConnectionResponseSchema>
 export type ChatMessage = z.infer<typeof ChatMessageSchema>
+export type ChatMessageEdit = z.infer<typeof ChatMessageEditSchema>
+export type ChatMessageDelete = z.infer<typeof ChatMessageDeleteSchema>
 export type PresenceUpdate = z.infer<typeof PresenceUpdateSchema>
+export type UserStatusUpdate = z.infer<typeof UserStatusUpdateSchema>
 export type TypingIndicator = z.infer<typeof TypingIndicatorSchema>
 export type FileTransferRequest = z.infer<typeof FileTransferRequestSchema>
 export type FileTransferResponse = z.infer<typeof FileTransferResponseSchema>
+export type FileTransferData = z.infer<typeof FileTransferDataSchema>
 export type WebRTCOffer = z.infer<typeof WebRTCOfferSchema>
 export type WebRTCAnswer = z.infer<typeof WebRTCAnswerSchema>
 export type WebRTCIceCandidate = z.infer<typeof WebRTCIceCandidateSchema>

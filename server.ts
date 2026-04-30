@@ -1,7 +1,7 @@
 import { createServer } from 'http'
 import { parse } from 'url'
 import next from 'next'
-import { WebSocketServer, WebSocket } from 'ws'
+import { WebSocketServer, WebSocket, RawData } from 'ws'
 import { SessionManager } from './src/lib/session-manager'
 import { WebSocketMessageHandler } from './src/lib/websocket-handler'
 import { getLocalNetworkIPs } from './src/lib/network-utils'
@@ -20,6 +20,18 @@ async function startServer() {
     // Create HTTP server
     const server = createServer(async (req, res) => {
       try {
+        // Skip Next.js handling for WebSocket endpoint
+        if (req.url === '/ws') {
+          // If it's not an upgrade request, return 426 Upgrade Required
+          if (req.headers.upgrade?.toLowerCase() !== 'websocket') {
+            res.writeHead(426, { 'Content-Type': 'text/plain' })
+            res.end('This endpoint requires WebSocket upgrade')
+            return
+          }
+          // Otherwise, let the WebSocket server handle the upgrade
+          return
+        }
+        
         const parsedUrl = parse(req.url!, true)
         await handle(req, res, parsedUrl)
       } catch (err) {
@@ -31,10 +43,26 @@ async function startServer() {
 
     // Create WebSocket server
     const wss = new WebSocketServer({ 
-      server,
-      path: '/ws',
+      noServer: true, // Use noServer mode to manually handle upgrades
       perMessageDeflate: true,
       maxPayload: 1024 * 1024, // 1MB max message size
+    })
+
+    // Handle WebSocket upgrade requests manually
+    server.on('upgrade', (req, socket, head) => {
+      const { pathname } = parse(req.url || '', true)
+      
+      // Only handle /ws path for our WebSocket server
+      if (pathname === '/ws') {
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          wss.emit('connection', ws, req)
+        })
+      } else {
+        // For all other paths (including HMR), reject the upgrade
+        // Next.js HMR doesn't work well with custom servers in this setup
+        // This is expected behavior - HMR will fall back to polling
+        socket.destroy()
+      }
     })
 
     // Initialize session manager and message handler
@@ -49,7 +77,7 @@ async function startServer() {
       messageHandler.handleConnection(ws)
       
       // Handle messages
-      ws.on('message', (data) => {
+      ws.on('message', (data: RawData) => {
         messageHandler.handleMessage(ws, data)
       })
       

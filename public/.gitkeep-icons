@@ -1,0 +1,9 @@
+Add the following icon files to this directory:
+- icon-192x192.png (192x192 pixels)
+- icon-512x512.png (512x512 pixels)
+- apple-touch-icon.png (180x180 pixels)
+- favicon.ico (32x32 pixels)
+
+You can generate these using a tool like:
+- https://realfavicongenerator.net/
+- https://favicon.io/

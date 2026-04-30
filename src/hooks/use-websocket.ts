@@ -6,6 +6,7 @@ interface SessionData {
   token: string
   displayName: string
   avatar?: string
+  status?: 'online' | 'in-call' | 'away'
 }
 
 interface WebSocketState {
@@ -41,6 +42,13 @@ export function useWebSocket(): WebSocketHook {
     users: [],
     connections: new Set(),
   })
+
+  const sessionRef = useRef<SessionData | null>(null)
+  
+  // Keep ref in sync with state
+  useEffect(() => {
+    sessionRef.current = state.session
+  }, [state.session])
 
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -209,7 +217,12 @@ export function useWebSocket(): WebSocketHook {
 
   // Connect to WebSocket
   const connect = useCallback((reconnectToken?: string) => {
+    console.log('[useWebSocket] connect() called')
+    console.log('[useWebSocket] Current WebSocket state:', wsRef.current?.readyState)
+    console.log('[useWebSocket] Attempting to connect to:', WEBSOCKET_URL)
+    
     if (wsRef.current?.readyState === WebSocket.OPEN) {
+      console.log('[useWebSocket] Already connected, skipping')
       return // Already connected
     }
 
@@ -220,8 +233,10 @@ export function useWebSocket(): WebSocketHook {
     }))
 
     try {
+      console.log('[useWebSocket] Creating new WebSocket connection...')
       const ws = new WebSocket(WEBSOCKET_URL)
       wsRef.current = ws
+      console.log('[useWebSocket] WebSocket instance created')
 
       ws.onopen = () => {
         console.log('WebSocket connected')
@@ -235,8 +250,29 @@ export function useWebSocket(): WebSocketHook {
         reconnectAttemptsRef.current = 0
         processMessageQueue()
 
-        // If reconnecting with token, attempt to restore session
-        if (reconnectToken) {
+        // Auto-rejoin session
+        let savedSession = sessionRef.current
+        if (!savedSession && typeof window !== 'undefined') {
+          try {
+            const saved = localStorage.getItem('hub-session')
+            if (saved) {
+              savedSession = JSON.parse(saved)
+            }
+          } catch (e) {
+            console.error('Failed to parse saved session', e)
+          }
+        }
+
+        if (savedSession && savedSession.displayName) {
+          console.log('Auto-rejoining with session data for', savedSession.displayName)
+          const joinMessage = {
+            type: 'join',
+            displayName: savedSession.displayName,
+            avatar: savedSession.avatar,
+          }
+          ws.send(JSON.stringify(joinMessage))
+        } else if (reconnectToken) {
+          // If reconnecting with token, attempt to restore session
           // Implementation would send token validation message
           console.log('Attempting to restore session with token')
         }
@@ -246,10 +282,17 @@ export function useWebSocket(): WebSocketHook {
 
       ws.onclose = (event) => {
         console.log('WebSocket disconnected:', event.code, event.reason)
+        
+        // Check if this is a connection failure (never connected)
+        const wasNeverConnected = !state.isConnected && state.isConnecting
+        
         setState(prev => ({
           ...prev,
           isConnected: false,
           isConnecting: false,
+          error: wasNeverConnected 
+            ? 'Cannot connect to WebSocket server. Please ensure the server is running with "npm run dev"'
+            : prev.error,
         }))
 
         // Attempt reconnection if not a normal closure
@@ -261,20 +304,32 @@ export function useWebSocket(): WebSocketHook {
             reconnectAttemptsRef.current++
             connect(reconnectToken)
           }, delay)
+        } else if (event.code !== 1000) {
+          // Max reconnection attempts reached
+          setState(prev => ({
+            ...prev,
+            error: 'Failed to connect to server. Please check that the server is running with "npm run dev"',
+          }))
         }
       }
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error)
+        console.error('[useWebSocket] WebSocket error event:', error)
+        console.error('[useWebSocket] WebSocket readyState:', ws.readyState)
+        console.error('[useWebSocket] WebSocket URL:', ws.url)
         setState(prev => ({
           ...prev,
-          error: 'Connection failed',
+          error: 'WebSocket server not available. Make sure you started the server with "npm run dev"',
           isConnecting: false,
         }))
       }
 
     } catch (error) {
-      console.error('Failed to create WebSocket connection:', error)
+      console.error('[useWebSocket] Failed to create WebSocket connection:', error)
+      console.error('[useWebSocket] Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+      })
       setState(prev => ({
         ...prev,
         error: 'Failed to connect',
@@ -359,12 +414,75 @@ export function useWebSocket(): WebSocketHook {
 
   // Initialize connection on mount
   useEffect(() => {
+    console.log('[useWebSocket] Initializing WebSocket connection...')
+    console.log('[useWebSocket] WEBSOCKET_URL:', WEBSOCKET_URL)
+    console.log('[useWebSocket] window.location.host:', typeof window !== 'undefined' ? window.location.host : 'N/A')
+    
+    if (typeof window === 'undefined') {
+      console.log('[useWebSocket] SSR detected, skipping connection')
+      return
+    }
+    
     connect()
 
     return () => {
+      console.log('[useWebSocket] Cleaning up WebSocket connection')
       disconnect()
     }
-  }, []) // Empty dependency array - only run on mount/unmount
+  }, [connect, disconnect])
+
+  // Idle Detection
+  useEffect(() => {
+    if (!state.isConnected || !state.session) return
+
+    let idleTimer: NodeJS.Timeout
+    const IDLE_TIMEOUT = 5 * 60 * 1000 // 5 minutes
+
+    const resetIdleTimer = () => {
+      if (sessionRef.current?.status === 'away') {
+        sendMessage({
+          type: 'user-status-update',
+          status: 'online',
+        } as any)
+        
+        setState(prev => prev.session ? ({
+          ...prev,
+          session: { ...prev.session, status: 'online' }
+        }) : prev)
+      }
+
+      clearTimeout(idleTimer)
+      idleTimer = setTimeout(() => {
+        if (sessionRef.current?.status === 'online') {
+          sendMessage({
+            type: 'user-status-update',
+            status: 'away',
+          } as any)
+          
+          setState(prev => prev.session ? ({
+            ...prev,
+            session: { ...prev.session, status: 'away' }
+          }) : prev)
+        }
+      }, IDLE_TIMEOUT)
+    }
+
+    // Attach listeners
+    window.addEventListener('mousemove', resetIdleTimer)
+    window.addEventListener('keypress', resetIdleTimer)
+    window.addEventListener('touchstart', resetIdleTimer)
+    window.addEventListener('scroll', resetIdleTimer)
+    
+    resetIdleTimer() // initialize
+
+    return () => {
+      clearTimeout(idleTimer)
+      window.removeEventListener('mousemove', resetIdleTimer)
+      window.removeEventListener('keypress', resetIdleTimer)
+      window.removeEventListener('touchstart', resetIdleTimer)
+      window.removeEventListener('scroll', resetIdleTimer)
+    }
+  }, [state.isConnected, state.session?.sessionId, sendMessage])
 
   // Expose addEventListener for components to use
   const hookWithEvents = {

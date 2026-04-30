@@ -1,5 +1,7 @@
 'use client'
 
+import { AlertTriangle } from 'lucide-react'
+
 interface ErrorScreenProps {
   title?: string
   message: string
@@ -18,19 +20,7 @@ export function ErrorScreen({
       <div className="w-full max-w-md text-center">
         {/* Error Icon */}
         <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 dark:bg-red-900/20 rounded-full mb-6">
-          <svg
-            className="w-8 h-8 text-red-600 dark:text-red-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+          <AlertTriangle className="w-8 h-8 text-red-600 dark:text-red-400" />
         </div>
 
         {/* Error Content */}
@@ -69,10 +59,20 @@ export function ErrorScreen({
             Troubleshooting Tips:
           </h3>
           <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-            <li>• Check your network connection</li>
-            <li>• Ensure you're on the same network as the Hub server</li>
-            <li>• Try refreshing the page</li>
-            <li>• Contact the person who shared this Hub link</li>
+            {message.includes('npm run dev') ? (
+              <>
+                <li>• Make sure the server is running with <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">npm run dev</code></li>
+                <li>• Don't use <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">next dev</code> - it won't start the WebSocket server</li>
+                <li>• Check the terminal for any server errors</li>
+              </>
+            ) : (
+              <>
+                <li>• Check your network connection</li>
+                <li>• Ensure you're on the same network as the Hub server</li>
+                <li>• Try refreshing the page</li>
+                <li>• Contact the person who shared this Hub link</li>
+              </>
+            )}
           </ul>
         </div>
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Check, User } from 'lucide-react'
 
 interface AvatarPickerProps {
   selected?: string
@@ -60,19 +61,7 @@ export function AvatarPicker({ selected, onSelect }: AvatarPickerProps) {
               {/* Selection indicator */}
               {isSelected && (
                 <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-primary rounded-full flex items-center justify-center">
-                  <svg
-                    className="w-2.5 h-2.5 text-white"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={3}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
+                  <Check className="w-2.5 h-2.5 text-white" />
                 </div>
               )}
             </button>
@@ -137,7 +126,7 @@ export function AvatarDisplay({ avatarId, size = 'md', className = '' }: AvatarD
         ${size === 'lg' ? 'w-12 h-12 text-lg' : ''}
         ${className}
       `}>
-        <span>👤</span>
+        <User className="w-1/2 h-1/2" />
       </div>
     )
   }
