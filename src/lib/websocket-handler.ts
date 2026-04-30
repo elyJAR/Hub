@@ -15,7 +15,7 @@ export class WebSocketMessageHandler {
     this.sessionManager = sessionManager
     this.rateLimiter = new RateLimiter()
     
-    // Clean up expired requests every 30 seconds
+    // Clean up expired requests and rate-limit entries every 30 seconds
     this.cleanupInterval = setInterval(() => {
       const now = Date.now()
       for (const [requestId, request] of this.pendingRequests) {
@@ -23,6 +23,7 @@ export class WebSocketMessageHandler {
           this.pendingRequests.delete(requestId)
         }
       }
+      this.rateLimiter.cleanup()
     }, 30000)
   }
 
@@ -116,6 +117,14 @@ export class WebSocketMessageHandler {
       if (message.displayName.length < 3 || message.displayName.length > 50) {
         this.sendError(ws, 'INVALID_DISPLAY_NAME', 'Display name must be 3-50 characters')
         return
+      }
+
+      // Validate avatar if provided
+      if (message.avatar !== undefined && message.avatar !== null) {
+        if (typeof message.avatar !== 'string' || message.avatar.length > 200) {
+          this.sendError(ws, 'INVALID_AVATAR', 'Avatar must be a string of at most 200 characters')
+          return
+        }
       }
 
       // Check if display name is already taken

@@ -642,7 +642,7 @@ export function ChatInterface({
             placeholder={editingMessageId ? "Edit message..." : (isConnected ? "Type a message..." : "Connecting...")}
             disabled={!isConnected}
             className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-background text-foreground placeholder-muted-foreground ${editingMessageId ? 'border-primary ring-1 ring-primary' : 'border-input'}`}
-            maxLength={1000}
+            maxLength={4000}
           />
           <button
             type="submit"
