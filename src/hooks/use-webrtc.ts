@@ -99,12 +99,23 @@ export function useWebRTC(): UseWebRTCReturn {
       console.log('Received remote track:', event.track.kind)
       remoteStreamRef.current = event.streams[0]
       
-      // Play remote audio
-      const audioElement = document.getElementById('remote-audio') as HTMLAudioElement
-      if (audioElement) {
-        audioElement.srcObject = event.streams[0]
-        audioElement.play().catch(err => console.error('Error playing remote audio:', err))
+      // Play remote audio — the CallInterface may not have mounted yet, so retry once
+      const attachAudio = (stream: MediaStream) => {
+        const audioElement = document.getElementById('remote-audio') as HTMLAudioElement
+        if (audioElement) {
+          audioElement.srcObject = stream
+          audioElement.play().catch(err => console.error('Error playing remote audio:', err))
+        } else {
+          setTimeout(() => {
+            const el = document.getElementById('remote-audio') as HTMLAudioElement
+            if (el) {
+              el.srcObject = stream
+              el.play().catch(err => console.error('Error playing remote audio:', err))
+            }
+          }, 300)
+        }
       }
+      attachAudio(event.streams[0])
     }
 
     // Handle connection state changes

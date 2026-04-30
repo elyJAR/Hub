@@ -33,8 +33,10 @@ export function UserList({
   const [connections, setConnections] = useState<Set<string>>(new Set())
   const [pendingRequests, setPendingRequests] = useState<Set<string>>(new Set())
 
-  // Filter out current user from the list
-  const users = allUsers.filter(user => user.sessionId !== currentSession.sessionId)
+  // Filter out current user and offline users from the list
+  const users = allUsers.filter(
+    user => user.sessionId !== currentSession.sessionId && user.status !== 'offline'
+  )
 
   // Load persistent connections from localStorage (by displayName)
   useEffect(() => {

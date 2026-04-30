@@ -31,14 +31,14 @@ export const ConnectionResponseSchema = BaseMessageSchema.extend({
 export const ChatMessageSchema = BaseMessageSchema.extend({
   type: z.literal('chat-message'),
   targetSessionId: z.string(),
-  content: z.string(),
+  content: z.string().min(1).max(4000),
 })
 
 export const ChatMessageEditSchema = BaseMessageSchema.extend({
   type: z.literal('chat-message-edit'),
   targetSessionId: z.string(),
   messageId: z.string(),
-  newContent: z.string(),
+  newContent: z.string().min(1).max(4000),
 })
 
 export const ChatMessageDeleteSchema = BaseMessageSchema.extend({

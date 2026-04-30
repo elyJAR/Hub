@@ -272,7 +272,7 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
         <CallInterface
           isIncoming={isCallIncoming}
           remoteUserName={remoteUserName || 'Unknown User'}
-          remoteAvatar={undefined}
+          remoteAvatar={users.find(u => u.sessionId === remoteUserId)?.avatar}
           callDuration={callDuration}
           isMuted={isMuted}
           onAccept={acceptCall}

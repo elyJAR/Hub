@@ -56,6 +56,8 @@ export function useWebSocket(): WebSocketHook {
   const reconnectAttemptsRef = useRef(0)
   const messageQueueRef = useRef<any[]>([])
   const eventListenersRef = useRef<Map<string, Set<(data: any) => void>>>(new Map())
+  // Tracks whether the current WebSocket instance ever successfully opened
+  const wasOpenRef = useRef(false)
 
   // Generate unique message ID
   const generateMessageId = useCallback(() => {
@@ -271,6 +273,7 @@ export function useWebSocket(): WebSocketHook {
 
       ws.onopen = () => {
         console.log('WebSocket connected')
+        wasOpenRef.current = true
         setState(prev => ({
           ...prev,
           isConnected: true,
@@ -315,8 +318,9 @@ export function useWebSocket(): WebSocketHook {
       ws.onclose = (event) => {
         console.log('WebSocket disconnected:', event.code, event.reason)
         
-        // Check if this is a connection failure (never connected)
-        const wasNeverConnected = !state.isConnected && state.isConnecting
+        // Check if this is a connection failure (never successfully opened)
+        const wasNeverConnected = !wasOpenRef.current
+        wasOpenRef.current = false
         
         setState(prev => ({
           ...prev,
@@ -394,13 +398,17 @@ export function useWebSocket(): WebSocketHook {
       }
 
       // Listen for session creation or error
+      let timeoutId: NodeJS.Timeout
+
       const cleanup = addEventListener('session-created', () => {
+        clearTimeout(timeoutId)
         cleanup()
         resolve()
       })
 
       const errorCleanup = addEventListener('error', (error) => {
         if (error.code === 'INVALID_DISPLAY_NAME' || error.code === 'NAME_TAKEN' || error.code === 'JOIN_FAILED') {
+          clearTimeout(timeoutId)
           errorCleanup()
           cleanup()
           reject(new Error(error.message))
@@ -410,7 +418,7 @@ export function useWebSocket(): WebSocketHook {
       wsRef.current.send(JSON.stringify(joinMessage))
 
       // Timeout after 10 seconds
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         cleanup()
         errorCleanup()
         reject(new Error('Join request timed out'))

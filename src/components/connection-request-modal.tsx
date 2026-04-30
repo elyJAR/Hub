@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { AvatarDisplay } from './avatar-picker'
-import { useWebSocket } from '@/hooks/use-websocket'
+import { useWebSocketContext } from '@/contexts/websocket-context'
 import { X, UserPlus } from 'lucide-react'
 
 interface ConnectionRequest {
@@ -19,7 +19,7 @@ interface ConnectionRequestModalProps {
 }
 
 export function ConnectionRequestModal({ isOpen, onClose }: ConnectionRequestModalProps) {
-  const { addEventListener, sendMessage } = useWebSocket()
+  const { addEventListener, sendMessage } = useWebSocketContext()
   const [pendingRequests, setPendingRequests] = useState<ConnectionRequest[]>([])
 
   // Listen for incoming connection requests

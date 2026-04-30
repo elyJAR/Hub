@@ -9,20 +9,26 @@ export class WebSocketMessageHandler {
   private rateLimiter: RateLimiter
   private socketToSession = new Map<WebSocket, string>()
   private pendingRequests = new Map<string, { fromSessionId: string; toSessionId: string; expiresAt: number }>()
+  private cleanupInterval: ReturnType<typeof setInterval>
 
   constructor(sessionManager: SessionManager) {
     this.sessionManager = sessionManager
     this.rateLimiter = new RateLimiter()
     
-    // Clean up expired requests every 30 seconds
-    setInterval(() => {
+    // Clean up expired requests and rate-limit entries every 30 seconds
+    this.cleanupInterval = setInterval(() => {
       const now = Date.now()
       for (const [requestId, request] of this.pendingRequests) {
         if (request.expiresAt <= now) {
           this.pendingRequests.delete(requestId)
         }
       }
+      this.rateLimiter.cleanup()
     }, 30000)
+  }
+
+  destroy(): void {
+    clearInterval(this.cleanupInterval)
   }
 
   handleConnection(ws: WebSocket): void {
@@ -94,7 +100,15 @@ export class WebSocketMessageHandler {
     const sessionId = this.socketToSession.get(ws)
     if (sessionId) {
       console.log(`Session ${sessionId} disconnected`)
-      this.sessionManager.removeSession(sessionId)
+      // Mark the session offline but keep it so connections persist across reconnects.
+      // The periodic cleanup will remove truly abandoned sessions after 5 minutes of inactivity.
+      const session = this.sessionManager.getSession(sessionId)
+      if (session) {
+        session.socket = null
+        session.status = 'offline'
+        session.lastActivity = Date.now() // gives a full 5-minute window to reconnect
+        this.sessionManager.saveToDiskPublic()
+      }
       this.socketToSession.delete(ws)
       this.broadcastPresenceUpdate()
     }
@@ -113,20 +127,48 @@ export class WebSocketMessageHandler {
         return
       }
 
-      // Check if display name is already taken
-      const existingSessions = this.sessionManager.getAllSessions()
-      const nameTaken = existingSessions.some(s => s.displayName === message.displayName)
-      
-      if (nameTaken) {
-        // Suggest alternative name
-        const suffix = crypto.randomBytes(2).toString('hex').toLowerCase()
-        const suggestedName = `${message.displayName} #${suffix}`
-        this.sendError(ws, 'NAME_TAKEN', 'Display name already taken', { suggestedName })
-        return
+      // Validate avatar if provided
+      if (message.avatar !== undefined && message.avatar !== null) {
+        if (typeof message.avatar !== 'string' || message.avatar.length > 200) {
+          this.sendError(ws, 'INVALID_AVATAR', 'Avatar must be a string of at most 200 characters')
+          return
+        }
       }
 
-      // Create session
-      const session = this.sessionManager.createSession(ws, message.displayName, message.avatar)
+      // Determine if this is a legitimate reconnect.
+      // A reconnect is valid when: the client supplies their old sessionId, that session
+      // still exists in our map, it has the same displayName, and it is currently offline.
+      const existingOfflineSession = message.sessionId
+        ? this.sessionManager.getSession(message.sessionId)
+        : null
+      const isReconnect = !!(
+        existingOfflineSession &&
+        existingOfflineSession.displayName === message.displayName &&
+        existingOfflineSession.status === 'offline'
+      )
+
+      if (!isReconnect) {
+        // Check if display name is already taken by an active (non-offline) session
+        const existingSessions = this.sessionManager.getAllSessions()
+        const nameTaken = existingSessions.some(
+          s => s.status !== 'offline' && s.displayName === message.displayName
+        )
+        if (nameTaken) {
+          // Suggest alternative name
+          const suffix = crypto.randomBytes(2).toString('hex').toLowerCase()
+          const suggestedName = `${message.displayName} #${suffix}`
+          this.sendError(ws, 'NAME_TAKEN', 'Display name already taken', { suggestedName })
+          return
+        }
+      }
+
+      // Create or restore session
+      const session = this.sessionManager.createSession(
+        ws,
+        message.displayName,
+        message.avatar,
+        isReconnect ? message.sessionId : undefined
+      )
       this.socketToSession.set(ws, session.sessionId)
 
       // Generate JWT token
@@ -141,7 +183,34 @@ export class WebSocketMessageHandler {
         avatar: session.avatar,
       })
 
-      console.log(`User "${session.displayName}" joined with session ${session.sessionId}`)
+      console.log(`User "${session.displayName}" joined with session ${session.sessionId}${isReconnect ? ' (reconnected)' : ''}`)
+
+      // On reconnect, notify both sides about all existing connections so the UI
+      // reflects the established friendships without requiring new requests.
+      if (isReconnect) {
+        session.connections.forEach(connectedId => {
+          const connectedSession = this.sessionManager.getSession(connectedId)
+          if (!connectedSession) return
+
+          // Tell the reconnecting user about this connection
+          this.sendMessage(ws, {
+            type: 'connection-established',
+            sessionId: connectedId,
+            displayName: connectedSession.displayName,
+            avatar: connectedSession.avatar,
+          })
+
+          // If the peer is currently online, tell them too
+          if (connectedSession.socket && connectedSession.status !== 'offline') {
+            this.sendMessage(connectedSession.socket, {
+              type: 'connection-established',
+              sessionId: session.sessionId,
+              displayName: session.displayName,
+              avatar: session.avatar,
+            })
+          }
+        })
+      }
 
       // Broadcast presence update to all users
       this.broadcastPresenceUpdate()
@@ -463,7 +532,9 @@ export class WebSocketMessageHandler {
   }
 
   private broadcastPresenceUpdate(): void {
-    const users = this.sessionManager.getAllSessions()
+    // Only broadcast users that are currently online/away/in-call; offline sessions
+    // are kept in memory for reconnect purposes but should not show in the user list.
+    const users = this.sessionManager.getAllSessions().filter(u => u.status !== 'offline')
     const presenceMessage = {
       type: 'presence-update',
       users,

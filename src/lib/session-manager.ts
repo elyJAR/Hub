@@ -45,24 +45,25 @@ export class SessionManager {
     }
   }
 
+  saveToDiskPublic() {
+    this.saveToDisk()
+  }
+
   private saveToDisk() {
-    try {
-      const toSave: any = {}
-      for (const [id, s] of this.sessions) {
-        toSave[id] = {
-          sessionId: s.sessionId,
-          displayName: s.displayName,
-          avatar: s.avatar,
-          status: s.status,
-          joinedAt: s.joinedAt,
-          lastActivity: s.lastActivity,
-          connections: Array.from(s.connections)
-        }
+    const toSave: any = {}
+    for (const [id, s] of this.sessions) {
+      toSave[id] = {
+        sessionId: s.sessionId,
+        displayName: s.displayName,
+        avatar: s.avatar,
+        status: s.status,
+        joinedAt: s.joinedAt,
+        lastActivity: s.lastActivity,
+        connections: Array.from(s.connections)
       }
-      fs.writeFileSync(SESSIONS_FILE, JSON.stringify(toSave, null, 2))
-    } catch (e) {
-      console.error('Failed to save sessions:', e)
     }
+    fs.promises.writeFile(SESSIONS_FILE, JSON.stringify(toSave, null, 2))
+      .catch(e => console.error('Failed to save sessions:', e))
   }
 
   createSession(socket: WebSocket, displayName: string, avatar?: string, requestedSessionId?: string): SessionData {
@@ -177,7 +178,9 @@ export class SessionManager {
     const toRemove: string[] = []
 
     for (const [sessionId, session] of this.sessions) {
-      if (now - session.lastActivity > timeoutMs) {
+      // Only evict sessions that are no longer connected AND have been inactive
+      const isConnected = session.socket !== null && session.socket.readyState === 1 // WebSocket.OPEN = 1
+      if (!isConnected && now - session.lastActivity > timeoutMs) {
         toRemove.push(sessionId)
       }
     }

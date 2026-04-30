@@ -83,7 +83,7 @@ async function startServer() {
       
       // Handle disconnection
       ws.on('close', (code, reason) => {
-        console.log('WebSocket disconnected:', code, reason.toString())
+        console.log('WebSocket disconnected:', code, reason?.toString() ?? '')
         messageHandler.handleDisconnection(ws)
       })
       
@@ -98,6 +98,16 @@ async function startServer() {
     setInterval(() => {
       sessionManager.cleanupInactiveSessions()
     }, 60000) // Every minute
+
+    // Ping all clients every 30 seconds to keep connections alive through NAT/firewalls.
+    // Browsers automatically respond to pings with a pong, so no client-side changes needed.
+    setInterval(() => {
+      wss.clients.forEach((ws: WebSocket) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.ping()
+        }
+      })
+    }, 30000)
 
     // Start server
     server.listen(port, hostname, () => {
@@ -120,6 +130,7 @@ async function startServer() {
     // Graceful shutdown
     process.on('SIGTERM', () => {
       console.log('\n🛑 Shutting down Hub server...')
+      messageHandler.destroy()
       server.close(() => {
         console.log('✅ Server closed')
         process.exit(0)
@@ -128,6 +139,7 @@ async function startServer() {
 
     process.on('SIGINT', () => {
       console.log('\n🛑 Shutting down Hub server...')
+      messageHandler.destroy()
       server.close(() => {
         console.log('✅ Server closed')
         process.exit(0)

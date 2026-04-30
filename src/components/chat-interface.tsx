@@ -89,9 +89,22 @@ export function ChatInterface({
   // Save messages to local storage whenever they change
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem(getStorageKey(), JSON.stringify(messages))
+      try {
+        localStorage.setItem(getStorageKey(), JSON.stringify(messages))
+      } catch (e) {
+        console.error('Failed to save messages to localStorage', e)
+      }
     }
   }, [messages, currentSession.sessionId, targetUserId])
+
+  // Clear typing timeout on unmount to avoid state updates after unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
+      }
+    }
+  }, [])
 
   // Listen for incoming messages
   useEffect(() => {
@@ -510,7 +523,12 @@ export function ChatInterface({
                           <p className="text-xs opacity-70">{(message.fileData.fileSize / 1024).toFixed(1)} KB</p>
                         </div>
                       </div>
-                      <a href={message.fileData.dataUrl} download={`Hub_${message.fileData.fileName}`} className="block w-full text-center text-xs py-1.5 px-2 bg-primary-foreground/20 text-current rounded hover:bg-primary-foreground/30 transition">
+                      <a
+                        href={message.fileData.dataUrl}
+                        download={`Hub_${message.fileData.fileName}`}
+                        onClick={() => toast.success(`Saving "${message.fileData?.fileName}" to your Downloads folder`)}
+                        className="block w-full text-center text-xs py-1.5 px-2 bg-primary-foreground/20 text-current rounded hover:bg-primary-foreground/30 transition"
+                      >
                         Download File
                       </a>
                     </div>
@@ -629,7 +647,7 @@ export function ChatInterface({
             placeholder={editingMessageId ? "Edit message..." : (isConnected ? "Type a message..." : "Connecting...")}
             disabled={!isConnected}
             className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-background text-foreground placeholder-muted-foreground ${editingMessageId ? 'border-primary ring-1 ring-primary' : 'border-input'}`}
-            maxLength={1000}
+            maxLength={4000}
           />
           <button
             type="submit"
