@@ -394,13 +394,17 @@ export function useWebSocket(): WebSocketHook {
       }
 
       // Listen for session creation or error
+      let timeoutId: NodeJS.Timeout
+
       const cleanup = addEventListener('session-created', () => {
+        clearTimeout(timeoutId)
         cleanup()
         resolve()
       })
 
       const errorCleanup = addEventListener('error', (error) => {
         if (error.code === 'INVALID_DISPLAY_NAME' || error.code === 'NAME_TAKEN' || error.code === 'JOIN_FAILED') {
+          clearTimeout(timeoutId)
           errorCleanup()
           cleanup()
           reject(new Error(error.message))
@@ -410,7 +414,7 @@ export function useWebSocket(): WebSocketHook {
       wsRef.current.send(JSON.stringify(joinMessage))
 
       // Timeout after 10 seconds
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         cleanup()
         errorCleanup()
         reject(new Error('Join request timed out'))

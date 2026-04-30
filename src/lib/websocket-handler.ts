@@ -9,13 +9,14 @@ export class WebSocketMessageHandler {
   private rateLimiter: RateLimiter
   private socketToSession = new Map<WebSocket, string>()
   private pendingRequests = new Map<string, { fromSessionId: string; toSessionId: string; expiresAt: number }>()
+  private cleanupInterval: ReturnType<typeof setInterval>
 
   constructor(sessionManager: SessionManager) {
     this.sessionManager = sessionManager
     this.rateLimiter = new RateLimiter()
     
     // Clean up expired requests every 30 seconds
-    setInterval(() => {
+    this.cleanupInterval = setInterval(() => {
       const now = Date.now()
       for (const [requestId, request] of this.pendingRequests) {
         if (request.expiresAt <= now) {
@@ -23,6 +24,10 @@ export class WebSocketMessageHandler {
         }
       }
     }, 30000)
+  }
+
+  destroy(): void {
+    clearInterval(this.cleanupInterval)
   }
 
   handleConnection(ws: WebSocket): void {

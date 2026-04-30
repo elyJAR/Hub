@@ -89,9 +89,22 @@ export function ChatInterface({
   // Save messages to local storage whenever they change
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem(getStorageKey(), JSON.stringify(messages))
+      try {
+        localStorage.setItem(getStorageKey(), JSON.stringify(messages))
+      } catch (e) {
+        console.error('Failed to save messages to localStorage', e)
+      }
     }
   }, [messages, currentSession.sessionId, targetUserId])
+
+  // Clear typing timeout on unmount to avoid state updates after unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
+      }
+    }
+  }, [])
 
   // Listen for incoming messages
   useEffect(() => {

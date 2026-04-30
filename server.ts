@@ -83,7 +83,7 @@ async function startServer() {
       
       // Handle disconnection
       ws.on('close', (code, reason) => {
-        console.log('WebSocket disconnected:', code, reason.toString())
+        console.log('WebSocket disconnected:', code, reason?.toString() ?? '')
         messageHandler.handleDisconnection(ws)
       })
       
@@ -120,6 +120,7 @@ async function startServer() {
     // Graceful shutdown
     process.on('SIGTERM', () => {
       console.log('\n🛑 Shutting down Hub server...')
+      messageHandler.destroy()
       server.close(() => {
         console.log('✅ Server closed')
         process.exit(0)
@@ -128,6 +129,7 @@ async function startServer() {
 
     process.on('SIGINT', () => {
       console.log('\n🛑 Shutting down Hub server...')
+      messageHandler.destroy()
       server.close(() => {
         console.log('✅ Server closed')
         process.exit(0)
