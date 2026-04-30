@@ -109,7 +109,7 @@ export function getAvatarInfo(avatarId?: string) {
 // Component to display an avatar
 interface AvatarDisplayProps {
   avatarId?: string
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl'
   className?: string
 }
 
@@ -124,6 +124,7 @@ export function AvatarDisplay({ avatarId, size = 'md', className = '' }: AvatarD
         ${size === 'sm' ? 'w-6 h-6 text-xs' : ''}
         ${size === 'md' ? 'w-8 h-8 text-sm' : ''}
         ${size === 'lg' ? 'w-12 h-12 text-lg' : ''}
+        ${size === 'xl' ? 'w-full h-full text-4xl' : ''}
         ${className}
       `}>
         <User className="w-1/2 h-1/2" />
@@ -138,6 +139,7 @@ export function AvatarDisplay({ avatarId, size = 'md', className = '' }: AvatarD
       ${size === 'sm' ? 'w-6 h-6 text-xs' : ''}
       ${size === 'md' ? 'w-8 h-8 text-sm' : ''}
       ${size === 'lg' ? 'w-12 h-12 text-lg' : ''}
+      ${size === 'xl' ? 'w-full h-full text-5xl' : ''}
       ${className}
     `}>
       <span>{avatar.emoji}</span>

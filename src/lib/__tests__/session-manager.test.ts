@@ -1,6 +1,13 @@
 import { SessionManager } from '../session-manager'
 import { WebSocket } from 'ws'
 
+jest.mock('fs', () => ({
+  existsSync: jest.fn(() => false),
+  mkdirSync: jest.fn(),
+  readFileSync: jest.fn(() => '{}'),
+  writeFileSync: jest.fn(),
+}))
+
 describe('SessionManager', () => {
   let sessionManager: SessionManager
   let mockSocket: any

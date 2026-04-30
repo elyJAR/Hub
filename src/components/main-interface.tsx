@@ -8,6 +8,7 @@ import { SettingsModal } from './settings-modal'
 import { CallInterface } from './call-interface'
 import { useConnectionRequests } from '@/hooks/use-connection-requests'
 import { useWebRTC } from '@/hooks/use-webrtc'
+import { useWebSocketContext } from '@/contexts/websocket-context'
 import { Menu, Users, Bell, Settings, Inbox } from 'lucide-react'
 
 interface SessionData {
@@ -70,6 +71,42 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
       declineRequest(currentToast.requestId)
     }
   }
+
+  const { addEventListener, users } = useWebSocketContext()
+
+  // Background listener for incoming messages when chat is not open
+  useEffect(() => {
+    const cleanup = addEventListener('chat-message-received', (data: any) => {
+      // If we are currently chatting with this user, ChatInterface handles it
+      if (data.fromSessionId === selectedUserId) return;
+      
+      // Otherwise, save to localStorage
+      if (typeof window !== 'undefined' && session) {
+        const key = `hub-chat-${session.sessionId}-${data.fromSessionId}`
+        try {
+          const saved = localStorage.getItem(key)
+          const messages = saved ? JSON.parse(saved) : []
+          
+          // Check if message already exists to prevent duplicates
+          if (!messages.some((m: any) => m.id === data.messageId)) {
+            messages.push({
+              id: data.messageId,
+              content: data.content,
+              fromSessionId: data.fromSessionId,
+              fromDisplayName: data.fromDisplayName,
+              timestamp: data.timestamp,
+              status: 'delivered'
+            })
+            localStorage.setItem(key, JSON.stringify(messages))
+          }
+        } catch (e) {
+          console.error('Failed to save background message', e)
+        }
+      }
+    })
+    
+    return cleanup
+  }, [addEventListener, selectedUserId, session])
 
   return (
     <div className="h-screen bg-background flex overflow-hidden">
@@ -173,7 +210,9 @@ export function MainInterface({ session, isConnected }: MainInterfaceProps) {
             <ChatInterface
               currentSession={session}
               targetUserId={selectedUserId}
+              targetUser={users.find(u => u.sessionId === selectedUserId)}
               isConnected={isConnected}
+              onStartCall={startCall}
             />
           ) : (
             <div className="h-full flex items-center justify-center bg-muted/20">

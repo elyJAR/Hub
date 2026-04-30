@@ -241,28 +241,16 @@ export function UserList({
                       <span>Waiting for response...</span>
                     </button>
                   ) : (
-                    <div className="mt-2 flex space-x-2">
+                    <div className="mt-2 flex">
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
                           onSelectUser(user.sessionId)
                         }}
-                        className="flex-1 text-xs bg-muted text-foreground py-1.5 px-3 rounded hover:bg-muted/80 transition-colors"
+                        className="w-full text-xs bg-muted text-foreground py-1.5 px-3 rounded hover:bg-muted/80 transition-colors"
                       >
                         Message
                       </button>
-                      {onStartCall && user.status !== 'in-call' && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onStartCall(user.sessionId)
-                          }}
-                          className="flex items-center justify-center text-xs bg-green-500 text-white py-1.5 px-3 rounded hover:bg-green-600 transition-colors"
-                          title="Start voice call"
-                        >
-                          <Phone className="w-3 h-3" />
-                        </button>
-                      )}
                     </div>
                   )}
                 </div>

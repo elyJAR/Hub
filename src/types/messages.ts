@@ -12,7 +12,7 @@ export const UserSessionSchema = z.object({
   sessionId: z.string(),
   displayName: z.string(),
   avatar: z.string().optional(),
-  status: z.enum(['online', 'in-call', 'away']),
+  status: z.enum(['online', 'in-call', 'away', 'offline']),
   joinedAt: z.number(),
 })
 

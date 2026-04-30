@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { AvatarDisplay } from './avatar-picker'
 import { useWebSocketContext } from '@/contexts/websocket-context'
 import EmojiPicker from 'emoji-picker-react'
-import { MessageSquare, File, Download, Pencil, Trash2, X, SmilePlus, Paperclip, Send, Check } from 'lucide-react'
+import { MessageSquare, File, Download, Pencil, Trash2, X, SmilePlus, Paperclip, Send, Check, Phone } from 'lucide-react'
 import { toast } from '@/lib/toast'
 
 interface SessionData {
@@ -37,16 +37,38 @@ interface Message {
 interface ChatInterfaceProps {
   currentSession: SessionData
   targetUserId: string
+  targetUser?: {
+    displayName: string
+    avatar?: string
+    status?: string
+  }
   isConnected: boolean
+  onStartCall?: (userId: string) => void
 }
 
 export function ChatInterface({ 
   currentSession, 
   targetUserId, 
-  isConnected 
+  targetUser,
+  isConnected,
+  onStartCall
 }: ChatInterfaceProps) {
   const { addEventListener, sendMessage } = useWebSocketContext()
-  const [messages, setMessages] = useState<Message[]>([])
+  const getStorageKey = () => `hub-chat-${currentSession.sessionId}-${targetUserId}`
+
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(getStorageKey())
+      if (saved) {
+        try {
+          return JSON.parse(saved)
+        } catch (e) {
+          console.error('Failed to parse saved messages', e)
+        }
+      }
+    }
+    return []
+  })
   const [inputValue, setInputValue] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [otherUserTyping, setOtherUserTyping] = useState(false)
@@ -63,6 +85,13 @@ export function ChatInterface({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Save messages to local storage whenever they change
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(getStorageKey(), JSON.stringify(messages))
+    }
+  }, [messages, currentSession.sessionId, targetUserId])
 
   // Listen for incoming messages
   useEffect(() => {
@@ -391,16 +420,27 @@ export function ChatInterface({
 
   return (
     <div className="h-full flex flex-col">
-      <div className="p-4 border-b border-border bg-card">
+      <div className="p-4 border-b border-border bg-card flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <AvatarDisplay avatarId={undefined} size="md" />
+          <AvatarDisplay avatarId={targetUser?.avatar} size="md" />
           <div>
-            <h3 className="font-medium text-foreground">Chat</h3>
+            <h3 className="font-medium text-foreground">{targetUser?.displayName || 'Chat'}</h3>
             <p className="text-xs text-muted-foreground">
               {isConnected ? 'Connected' : 'Disconnected'}
             </p>
           </div>
         </div>
+        
+        {onStartCall && targetUser?.status !== 'in-call' && (
+          <button
+            onClick={() => onStartCall(targetUserId)}
+            className="flex items-center space-x-2 text-sm bg-green-500 text-white py-2 px-4 rounded-md hover:bg-green-600 transition-colors"
+            title="Start voice call"
+          >
+            <Phone className="w-4 h-4" />
+            <span className="hidden sm:inline">Call</span>
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
@@ -470,7 +510,7 @@ export function ChatInterface({
                           <p className="text-xs opacity-70">{(message.fileData.fileSize / 1024).toFixed(1)} KB</p>
                         </div>
                       </div>
-                      <a href={message.fileData.dataUrl} download={message.fileData.fileName} className="block w-full text-center text-xs py-1.5 px-2 bg-primary-foreground/20 text-current rounded hover:bg-primary-foreground/30 transition">
+                      <a href={message.fileData.dataUrl} download={`Hub_${message.fileData.fileName}`} className="block w-full text-center text-xs py-1.5 px-2 bg-primary-foreground/20 text-current rounded hover:bg-primary-foreground/30 transition">
                         Download File
                       </a>
                     </div>

@@ -1,5 +1,5 @@
 import { WebSocket, RawData } from 'ws'
-import { nanoid } from 'nanoid'
+import crypto from 'crypto'
 import { SessionManager, SessionData } from './session-manager'
 import { WebSocketMessageSchema, WebSocketMessage } from '@/types/messages'
 import { RateLimiter } from './rate-limiter'
@@ -119,7 +119,7 @@ export class WebSocketMessageHandler {
       
       if (nameTaken) {
         // Suggest alternative name
-        const suffix = nanoid(4).toLowerCase()
+        const suffix = crypto.randomBytes(2).toString('hex').toLowerCase()
         const suggestedName = `${message.displayName} #${suffix}`
         this.sendError(ws, 'NAME_TAKEN', 'Display name already taken', { suggestedName })
         return
@@ -477,13 +477,13 @@ export class WebSocketMessageHandler {
     }
   }
 
-  private sendMessage(ws: WebSocket, message: any): void {
-    if (ws.readyState === WebSocket.OPEN) {
+  private sendMessage(ws: WebSocket | null, message: any): void {
+    if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(message))
     }
   }
 
-  private sendError(ws: WebSocket, code: string, message: string, details?: any): void {
+  private sendError(ws: WebSocket | null, code: string, message: string, details?: any): void {
     this.sendMessage(ws, {
       type: 'error',
       code,

@@ -1,0 +1,7 @@
+okay, here is the list
+1. for now when a user comes online, he always need to send connection request to people that already accepted his request before, the system should recognize the people he's friends with without the need to always resend request
+
+2. the call button should not be on the side bar but on the main page
+3. the system should not need manual refresh before update comes up, for example sometimes, the message from the other pc does not show up at all unless the server pc sends a message first.
+4. i cannot alwas find the downloaded files after downloading, by default, there should be another folder inside of downloads named "Hub Downloads" where all the downloaded files are stored.
+5. right now, the chat history isnt working, since there is always a kind of reset when i refresh the page.

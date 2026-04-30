@@ -20,9 +20,10 @@ interface WebSocketState {
 
 interface WebSocketHook extends WebSocketState {
   joinSession: (displayName: string, avatar?: string) => Promise<void>
-  sendMessage: (message: Omit<WebSocketMessage, 'id' | 'timestamp' | 'sessionId'>) => void
+  sendMessage: (message: any) => void
   reconnect: (token?: string) => void
   disconnect: () => void
+  addEventListener: (type: string, callback: (data: any) => void) => () => void
 }
 
 const WEBSOCKET_URL = typeof window !== 'undefined'
@@ -89,7 +90,7 @@ export function useWebSocket(): WebSocketHook {
   }, [])
 
   // Send message through WebSocket
-  const sendMessage = useCallback((message: Omit<WebSocketMessage, 'id' | 'timestamp' | 'sessionId'>) => {
+  const sendMessage = useCallback((message: any) => {
     if (!state.session) {
       console.error('Cannot send message: No active session')
       return
@@ -299,6 +300,7 @@ export function useWebSocket(): WebSocketHook {
             type: 'join',
             displayName: savedSession.displayName,
             avatar: savedSession.avatar,
+            sessionId: savedSession.sessionId,
           }
           ws.send(JSON.stringify(joinMessage))
         } else if (reconnectToken) {
@@ -376,10 +378,19 @@ export function useWebSocket(): WebSocketHook {
         return
       }
 
+      let savedSession = null
+      if (typeof window !== 'undefined') {
+        try {
+          const saved = localStorage.getItem('hub-session')
+          if (saved) savedSession = JSON.parse(saved)
+        } catch (e) {}
+      }
+
       const joinMessage = {
         type: 'join',
         displayName,
         avatar,
+        sessionId: savedSession?.sessionId,
       }
 
       // Listen for session creation or error
